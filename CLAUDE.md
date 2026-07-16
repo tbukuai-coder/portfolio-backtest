@@ -1,0 +1,75 @@
+# CLAUDE.md
+
+Guidance for Claude Code when working in this repo. Read `README.md` first for
+what the app is; this file covers the things you can't tell from skimming the code.
+
+## Architecture in one paragraph
+
+`index.html` is the entire app. It contains three `<script>` blocks: the **data
+block** (between `/*==DATA-START==*/` and `/*==DATA-END==*/`), the **engine
+block** (pure functions between `/*==ENGINE-START==*/` and `/*==ENGINE-END==*/` —
+month arithmetic, `simulate()`, `computeStats()`), and the **app block** (DOM,
+form handling, SVG chart rendering). The marker comments are load-bearing:
+`refresh_data.py` regex-splices new data between the DATA markers, and the
+engine tests eval the ENGINE block in Node. Don't rename or remove them, and
+keep the engine block free of DOM references so it stays Node-evaluable.
+
+## Hard rules
+
+- **Never edit the data block by hand.** Regenerate it with
+  `python3 refresh_data.py` (edit the `UNIVERSE` dict there to change assets).
+  The script drops the in-progress current month — keep that; a partial month
+  poisons every stat downstream.
+- **Engine changes must be sanity-tested in Node before shipping.** Extract and
+  eval the blocks (replace `const PV_DATA` with `var PV_DATA` first — `const`
+  inside `eval` doesn't escape to the caller's scope):
+
+  ```bash
+  node -e '
+  const html = require("fs").readFileSync("index.html","utf8");
+  const grab = (a,b) => html.split(a)[1].split(b)[0];
+  eval(grab("/*==DATA-START==*/","/*==DATA-END==*/").replace("const PV_DATA","var PV_DATA"));
+  eval(grab("/*==ENGINE-START==*/","/*==ENGINE-END==*/"));
+  // ... assertions here'
+  ```
+
+  Known-good anchors: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max drawdown
+  ≈ −50.8% (trough Feb 2009); All Weather's worst year is 2022. Contributions
+  must leave the TWR series unchanged for a single-asset portfolio (up to ~1e-15
+  float noise — compare with a tolerance, not stringify).
+- **Render-check both themes.** No build/lint exists; verification is headless
+  Chromium via Python playwright (installed in this studio): load the page over
+  `file://`, click `#exampleBtn` then `#runBtn`, screenshot with
+  `color_scheme="light"` and `"dark"`, and assert zero console/page errors.
+- **Keep stats time-weighted.** `computeStats()` runs on the TWR series, never
+  on the cashflow-inflated balance series; only the final balance and the growth
+  chart reflect contributions. If you add a metric, feed it `sim.twr`.
+
+## Conventions & quirks
+
+- Months are integers: `m = year*12 + (month-1)`; `PV_DATA.series[t].r[i]` is
+  the return for month `mIdx(start) + i`. All clamping (earliest common start
+  across chosen tickers + CASHX + SPY) happens in `run()`, not in the engine.
+- Rebalancing is calendar-aligned (`(m % 12 + 1) % rebalEvery === 0` → Dec for
+  annual, quarter-ends for quarterly), not anniversary-of-start. Contributions
+  are added at month-end at target weights.
+- CASHX is derived from ^IRX (13-week T-bill): monthly rf =
+  `(1 + yield/100)^(1/12) − 1`. It doubles as the Sharpe/Sortino risk-free leg.
+- Chart colors are the dataviz-skill validated palette: `--s1..--s4` =
+  Portfolio 1/2/3 + benchmark, defined once in `:root` with dark-mode overrides
+  under both `prefers-color-scheme` and `[data-theme]` scopes. The light-mode
+  magenta/yellow slots are sub-3:1 contrast by design — the summary and annual
+  tables are the required relief; don't remove them.
+- Bars: 4px rounded corners at the **data end only**, square at the baseline
+  (flips for negative bars); 2px gaps between grouped bars. Lines 2px. The
+  annual chart renders at natural pixel width inside `.scrollx` — don't let it
+  shrink-to-fit or the tick text becomes unreadable.
+- Benchmark dedup: if a portfolio is already 100% of the benchmark ticker, no
+  separate benchmark series is added.
+
+## Deploy
+
+Own git repo → github.com/tbukuai-coder/portfolio-backtest, served by GitHub
+Pages from main branch root (legacy build — a push to main is the deploy).
+Data refresh cycle: `python3 refresh_data.py`, re-run the Node sanity check,
+commit the regenerated `index.html`, push.
