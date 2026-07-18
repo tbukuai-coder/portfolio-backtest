@@ -17,6 +17,9 @@ from `file://`, or on GitHub Pages.
 - Portfolio growth chart (linear/log), annual returns bars, drawdown chart with
   worst-drawdown episode tables, annual returns table — all with hover tooltips,
   light/dark theme aware
+- **Custom tickers (opt-in)**: fetch any symbol's dividend-adjusted monthly
+  history with your own free [Twelve Data](https://twelvedata.com/pricing) API
+  key — see below
 
 ## Refreshing the data
 
@@ -29,6 +32,18 @@ python3 refresh_data.py
 
 To change the universe, edit the `UNIVERSE` dict at the top of `refresh_data.py`
 and re-run. The in-progress current month is always dropped.
+
+## Custom tickers (optional)
+
+The embedded universe needs no network at all. To backtest symbols outside it,
+open **Custom tickers** in the form, paste a free
+[Twelve Data API key](https://twelvedata.com/pricing) (no card required), and
+add tickers by symbol. Fetched series use `adjust=all` (splits + dividends —
+the same total-return basis as the embedded data, verified against yfinance to
+within ~2 bp/month), are trimmed to complete months, and are cached in your
+browser so repeat visits cost zero API calls. The key lives only in your
+browser's localStorage and is sent only to api.twelvedata.com. Free-plan
+limits (8 calls/min, 800/day) are ample: one call per ticker.
 
 ## Methodology notes
 

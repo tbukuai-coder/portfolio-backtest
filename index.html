@@ -83,7 +83,7 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 .ctl { display: flex; flex-direction: column; gap: 4px; }
 .ctl label { font-size: 12px; color: var(--ink-2); }
 .ctl .pair { display: flex; gap: 6px; }
-select, input[type=number], input[type=text] {
+select, input[type=number], input[type=text], input[type=password] {
   font: inherit;
   color: var(--ink);
   background: var(--surface);
@@ -126,6 +126,16 @@ button.primary {
   padding: 8px 22px;
 }
 .formfoot { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+
+details.custom { margin-top: 14px; border-top: 1px dashed var(--baseline); padding-top: 10px; }
+details.custom summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+details.custom a { color: inherit; }
+.custom-body { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--baseline); border-radius: 999px; padding: 2px 6px 2px 10px; color: var(--ink-2); }
+.chip b { color: var(--ink); font-weight: 600; }
+.chip button { border: none; background: none; padding: 0 4px; font-size: 14px; cursor: pointer; color: var(--muted); }
+.chip button:hover { color: var(--bad); }
 .note { color: var(--muted); font-size: 13px; }
 .warn { color: var(--bad); font-size: 13px; }
 
@@ -195,6 +205,29 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <tbody id="allocBody"></tbody>
       <tfoot><tr><td>Total</td><td id="tot0" class="total-ok">0%</td><td id="tot1" class="total-ok">0%</td><td id="tot2" class="total-ok">0%</td></tr></tfoot>
     </table>
+
+    <details class="custom" id="customData">
+      <summary>Custom tickers <span class="note">— optional, fetch any symbol with your free Twelve Data API key</span></summary>
+      <div class="custom-body">
+        <div class="ctl">
+          <label>Twelve Data API key (<a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">get a free key</a> — stored only in this browser)</label>
+          <input type="password" id="tdKey" placeholder="API key" autocomplete="off">
+        </div>
+        <div class="ctl">
+          <label>Add ticker</label>
+          <div class="pair">
+            <input type="text" id="tdTicker" placeholder="e.g. MSFT" style="width:110px">
+            <button id="tdAdd">Fetch &amp; add</button>
+          </div>
+        </div>
+        <span class="note" id="customStatus"></span>
+      </div>
+      <div class="chips" id="customList"></div>
+      <p class="note">Monthly closes adjusted for splits &amp; dividends (<code>adjust=all</code>) — the same
+      total-return basis as the embedded data. Fetched series are cached in this browser and cleared when the
+      embedded data is refreshed. One API call per ticker (free plan: 8/min, 800/day). Your key is sent only
+      to api.twelvedata.com, never stored in URLs.</p>
+    </details>
 
     <div class="formfoot">
       <button class="primary" id="runBtn">Run backtest</button>
@@ -445,6 +478,119 @@ $("exampleBtn").onclick = () => {
   updateTotals();
 };
 
+// ----- custom tickers (Twelve Data, opt-in) -----
+// Fetched series live only in the in-memory PV_DATA copy + localStorage cache;
+// the embedded data block in this file is never touched.
+const TD_GROUP = "Custom (Twelve Data)";
+$("tdKey").value = localStorage.getItem("pv_td_key") || "";
+$("tdKey").addEventListener("change", () => localStorage.setItem("pv_td_key", $("tdKey").value.trim()));
+
+function tdCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem("pv_td_cache") || "null");
+    if (c && c.end === PV_DATA.end && c.series) return c;
+  } catch (e) { /* corrupt cache → rebuild */ }
+  return { end: PV_DATA.end, series: {} };
+}
+function tdSaveCache(c) { try { localStorage.setItem("pv_td_cache", JSON.stringify(c)); } catch (e) { /* quota — fetch still works */ } }
+
+function installCustom(t, s) {
+  PV_DATA.series[t] = s;
+  (groups[TD_GROUP] ??= []).push([t, s]);
+  document.querySelectorAll("#allocBody select").forEach(sel =>
+    sel.add(new Option(`${t} — ${s.name} (${s.start.slice(0, 4)}+)`, t)));
+  $("bench").add(new Option(`${t} — ${s.name}`, t));
+  renderCustomList();
+}
+function removeCustom(t) {
+  delete PV_DATA.series[t];
+  groups[TD_GROUP] = (groups[TD_GROUP] || []).filter(([k]) => k !== t);
+  if (!groups[TD_GROUP].length) delete groups[TD_GROUP];
+  document.querySelectorAll("#allocBody select, #bench").forEach(sel => {
+    if (sel.value === t) sel.value = "";
+    [...sel.options].forEach(o => { if (o.value === t) o.remove(); });
+  });
+  const c = tdCache(); delete c.series[t]; tdSaveCache(c);
+  renderCustomList();
+  updateTotals();
+}
+function renderCustomList() {
+  const box = $("customList");
+  box.innerHTML = "";
+  (groups[TD_GROUP] || []).forEach(([t, s]) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const b = document.createElement("b"); b.textContent = t;
+    chip.append(b, ` ${mLabel(mIdx(s.start))} – ${mLabel(mIdx(s.end || PV_DATA.end))}`);
+    const x = document.createElement("button");
+    x.textContent = "×"; x.title = "Remove " + t;
+    x.onclick = () => removeCustom(t);
+    chip.append(x);
+    box.append(chip);
+  });
+}
+
+// TD returns rows newest-first with datetime "YYYY-MM-01". Keep the longest
+// trailing contiguous run of complete months up to the embedded data end
+// (which also drops the in-progress current month).
+function parseTdSeries(json) {
+  const endIdx = mIdx(PV_DATA.end);
+  const rows = (json.values || [])
+    .map(v => ({ m: v.datetime.slice(0, 7), c: +v.close }))
+    .filter(v => v.c > 0 && mIdx(v.m) <= endIdx)
+    .sort((a, b) => mIdx(a.m) - mIdx(b.m));
+  let r = [], start = null;
+  for (let i = 1; i < rows.length; i++) {
+    if (mIdx(rows[i].m) - mIdx(rows[i - 1].m) !== 1) { r = []; start = null; continue; }
+    if (!start) start = rows[i].m;
+    r.push(rows[i].c / rows[i - 1].c - 1);
+  }
+  if (r.length < 12) return { error: "Not enough monthly history on Twelve Data (need at least 12 complete months)." };
+  const meta = json.meta || {};
+  const cur = meta.currency && meta.currency !== "USD" ? ` · ${meta.currency}` : "";
+  return { name: `${meta.exchange || "custom"} · Twelve Data${cur}`, group: TD_GROUP, start, end: rows.at(-1).m, r };
+}
+
+async function addCustomTicker() {
+  const t = $("tdTicker").value.trim().toUpperCase();
+  const key = $("tdKey").value.trim();
+  const status = $("customStatus");
+  if (!t) return;
+  if (PV_DATA.series[t]) { status.textContent = `${t} is already available.`; return; }
+  if (!key) { status.textContent = "Enter your Twelve Data API key first."; return; }
+  localStorage.setItem("pv_td_key", key);
+  status.textContent = `Fetching ${t}…`;
+  let json;
+  try {
+    const resp = await fetch("https://api.twelvedata.com/time_series" +
+      `?symbol=${encodeURIComponent(t)}&interval=1month&outputsize=5000&adjust=all&apikey=${encodeURIComponent(key)}`);
+    json = await resp.json();
+  } catch (e) { status.textContent = "Network error — offline, or the request was blocked."; return; }
+  if (json.status === "error" || !json.values) {
+    status.textContent =
+      json.code === 401 ? "Twelve Data rejected the API key." :
+      json.code === 404 ? `Symbol ${t} not found on Twelve Data.` :
+      json.code === 429 ? "Rate limited (free plan allows 8 calls/min) — wait a minute and retry." :
+      `Twelve Data error: ${json.message || "unknown"}`;
+    return;
+  }
+  const s = parseTdSeries(json);
+  if (s.error) { status.textContent = s.error; return; }
+  installCustom(t, s);
+  const c = tdCache(); c.series[t] = s; tdSaveCache(c);
+  const early = mIdx(s.end) < dataMax ? ` — note: data ends ${mLabel(mIdx(s.end))}` : "";
+  status.textContent = `${t} added (${mLabel(mIdx(s.start))} – ${mLabel(mIdx(s.end))})${early}.`;
+  $("tdTicker").value = "";
+}
+$("tdAdd").onclick = addCustomTicker;
+$("tdTicker").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addCustomTicker(); } });
+
+{ // restore cached custom tickers (skipped when the embedded data end has moved on)
+  const c = tdCache();
+  Object.entries(c.series).forEach(([t, s]) => { if (!PV_DATA.series[t]) installCustom(t, s); });
+  if (Object.keys(c.series).length) $("customData").open = true;
+}
+
 function readPortfolios() {
   const rows = [...$("allocBody").rows].map(tr => ({
     t: tr.querySelector("select").value,
@@ -484,7 +630,13 @@ function run() {
 
   let startM = $("startYr").value * 12 + +$("startMo").value;
   let endM = $("endYr").value * 12 + +$("endMo").value;
-  endM = Math.min(endM, dataMax);
+  const commonEnd = Math.min(dataMax,
+    ...[...tickers].map(t => PV_DATA.series[t].end ? mIdx(PV_DATA.series[t].end) : dataMax));
+  let endClamp = null;
+  if (endM > commonEnd && commonEnd < dataMax) {
+    endClamp = [...tickers].find(t => PV_DATA.series[t].end && mIdx(PV_DATA.series[t].end) === commonEnd);
+  }
+  endM = Math.min(endM, commonEnd);
   let clamped = null;
   if (startM < commonStart) {
     const lim = [...tickers].find(t => mIdx(PV_DATA.series[t].start) === commonStart);
@@ -508,7 +660,8 @@ function run() {
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     (contrib ? ` · ${fmt$(contrib)}/mo contribution` : "") +
-    (clamped ? ` · start clamped to earliest data for ${clamped}` : "");
+    (clamped ? ` · start clamped to earliest data for ${clamped}` : "") +
+    (endClamp ? ` · end clamped to last data for ${endClamp}` : "");
   renderSummary(LAST);
   drawGrowth(LAST);
   drawAnnual(LAST);

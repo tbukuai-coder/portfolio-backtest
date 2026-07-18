@@ -2,6 +2,7 @@
 
 Guidance for Claude Code when working in this repo. Read `README.md` first for
 what the app is; this file covers the things you can't tell from skimming the code.
+See `ROADMAP.md` for planned work.
 
 ## Architecture in one paragraph
 
@@ -66,6 +67,17 @@ keep the engine block free of DOM references so it stays Node-evaluable.
   shrink-to-fit or the tick text becomes unreadable.
 - Benchmark dedup: if a portfolio is already 100% of the benchmark ticker, no
   separate benchmark series is added.
+- Custom tickers (opt-in Twelve Data fetch — see `DATA-API-PLAN.md` for why
+  that provider): fetched series are merged into the **in-memory**
+  `PV_DATA.series` only — the file's data block stays untouched — under group
+  "Custom (Twelve Data)", with an extra `end` field ("YYYY-MM") that `run()`
+  clamps to (embedded series have no `end`; they all run to `PV_DATA.end`).
+  localStorage: `pv_td_key` (API key — never put it in URLs) and `pv_td_cache`
+  (series cache, auto-invalidated when `PV_DATA.end` advances). Parsing keeps
+  the longest trailing contiguous month run ≤ `PV_DATA.end`, which also drops
+  the in-progress month. Chip/status DOM is built with `textContent`, not
+  innerHTML — ticker strings are user input. Playwright tests stub
+  `api.twelvedata.com` via `page.route()`; no key needed to verify.
 
 ## Deploy
 
