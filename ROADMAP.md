@@ -72,11 +72,16 @@ history and `CLAUDE.md`.
 
 ## Simulation features
 
-- [ ] **Monte Carlo goal metrics** — the fan exists; add the decision
-      layer: survival-vs-year curve (when does failure risk concentrate),
-      a goal input ("chance of ≥ $X by year Y") for accumulation runs, and
-      a percentile table at 10/20/30y. Same `monteCarlo()` output, no new
-      resampling.
+- [x] **Monte Carlo goal metrics** — built 2026-07-19: `monteCarlo()` now
+      also returns `alive` (per-month surviving fraction) and `yearEnds`
+      (references to the already-sorted per-month path arrays at year
+      boundaries) — same paths, no new resampling. The card gained a
+      10/20/30y+horizon percentile table (read straight off the bands), a
+      goal input ("chance of ≥ $X by year Y" via binary search on
+      `yearEnds`, cached in `MC_CTX` so typing doesn't re-resample, `g=`
+      in the hash), and a survival-vs-year curve shown only for fixed-$
+      withdrawals. Anchors: alive-at-horizon = survival exactly, curve
+      monotone non-increasing, year-end median = band median.
 - [ ] **Turnover & rebalancing cost** — report average annual turnover
       (Σ|trades| ÷ balance at each rebalance) per portfolio, with an
       optional cost-per-rebalance (bps) input that debits the balance like

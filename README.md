@@ -43,7 +43,9 @@ or on GitHub Pages.
   mean/median/skew readouts), asset
   correlation matrix (the backtest's assets over its window), **Monte Carlo
   projection** (1,000 block-bootstrap paths from the backtest's final balance
-  over a 1–60y horizon, percentile fan + survival rate under withdrawals),
+  over a 1–60y horizon, percentile fan + survival rate under withdrawals,
+  a 10/20/30-year percentile table, a goal input — "chance of ≥ $X by
+  year Y" — and a survival-vs-year curve for fixed withdrawals),
   annual returns table — all with hover tooltips, light/dark theme aware
 - **Custom tickers (opt-in)**: fetch any symbol's dividend-adjusted monthly
   history with your own free [Twelve Data](https://twelvedata.com/pricing) API

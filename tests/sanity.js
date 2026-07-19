@@ -298,6 +298,28 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   console.log("MC SPY 30y from 10k: 10th", Math.round(m1.finals[Math.floor(0.1 * 299)]),
               "median", Math.round(m1.finals[Math.floor(0.5 * 299)]),
               "90th", Math.round(m1.finals[Math.floor(0.9 * 299)]));
+
+  // goal metrics (alive + yearEnds — same paths, no new resampling)
+  assert(m1.alive.length === 360 && m1.alive.every(v => v === 1),
+         "no withdrawal -> every path alive every month");
+  assert(m1.yearEnds.length === 30, "one year-end snapshot per projection year");
+  assert(m1.yearEnds.every(a => a.length === 300), "each year-end holds all paths");
+  assert(m1.yearEnds.every(a => a.every((v, i) => i === 0 || v >= a[i - 1])),
+         "year-end balances sorted ascending");
+  // year-end snapshots agree with the bands at the same month
+  assert(m1.yearEnds.every((a, k) => a[Math.floor(0.5 * (a.length - 1))] === m1.bands[2][k * 12 + 11]),
+         "year-end median = band median at that month");
+  // certain depletion: survival identity and a monotone-declining curve
+  assert(d.alive[59] === d.survival, "alive at horizon = survival exactly");
+  assert(d.alive.every((v, i) => i === 0 || v <= d.alive[i - 1] + 1e-12),
+         "surviving fraction never increases");
+  assert(d.alive[0] === 1 && d.alive[59] === 0, "certain depletion: 100% -> 0% over the horizon");
+  // partial survival on real history (an ~8%/yr withdrawal from 10k fails on
+  // some resampled paths but not all): survival identity holds there too
+  const p = monteCarlo(spyHist, 10000, 360, { amount: -70 }, 300, 42);
+  console.log("MC SPY -70/mo survival", p.survival.toFixed(3));
+  assert(p.survival > 0.3 && p.survival < 0.95, "aggressive withdrawal -> partial survival");
+  assert(p.alive[359] === p.survival, "partial survival: alive at horizon = survival");
 }
 
 // Data freshness + shape

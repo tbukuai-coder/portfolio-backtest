@@ -340,6 +340,13 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
         <span class="note" id="mcStats"></span>
       </div>
       <div class="chartbox" id="mcChart"></div>
+      <div class="chart-head">
+        <label>Goal: at least $ <input type="number" id="mcGoalAmt" min="0" step="10000" style="width:120px">
+          by year <input type="number" id="mcGoalYr" min="1" max="60" style="width:56px"></label>
+        <span class="note" id="mcGoalNote"></span>
+      </div>
+      <div class="scrollx"><table id="mcTable"></table></div>
+      <div class="chartbox" id="mcSurv" style="display:none"></div>
       <p class="note" id="mcNote"></p>
     </div>
 
@@ -366,7 +373,10 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
     average return across the benchmark's up (down) months ÷ the benchmark's own average in those months. Max drawdown is month-end based
     (intra-month dips are invisible); longest underwater is the peak-to-recovery span of the longest
     drawdown episode. Calmar = CAGR ÷ |max drawdown|; Ulcer index = RMS of the monthly drawdown series;
-    Martin ratio = annualized mean excess return ÷ Ulcer index. The return-distribution card's skew is
+    Martin ratio = annualized mean excess return ÷ Ulcer index. Monte Carlo goal odds and the survival
+    curve read the same simulated paths as the fan: the goal readout counts paths at or above the target
+    at that year-end, and the curve shows the fraction of paths not yet depleted each year.
+    The return-distribution card's skew is
     adjusted Fisher–Pearson sample skewness of the monthly returns (negative = left tail, i.e. crash months
     reach further than rally months).
     Educational tool — not investment advice.
@@ -655,7 +665,18 @@ function monteCarlo(hist, startBal, months, cashflow, paths, seed) {
     arr.sort((a, b) => a - b);
     qs.forEach((q, i) => bands[i].push(arr[Math.floor(q * (arr.length - 1))]));
   });
-  return { bands, finals: finals.sort((a, b) => a - b), survival: 1 - died / paths };
+  // decision-layer extras from the same paths: fraction still alive each
+  // month (arrays are sorted, so count the leading zeros), and the sorted
+  // path balances at each year boundary (references, not copies) so goal
+  // probabilities ("chance of >= $X at year Y") are a lookup away
+  const alive = perMonth.map(arr => {
+    let i = 0;
+    while (i < arr.length && arr[i] <= 0) i++;
+    return 1 - i / arr.length;
+  });
+  const yearEnds = [];
+  for (let m = 11; m < months; m += 12) yearEnds.push(perMonth[m]);
+  return { bands, finals: finals.sort((a, b) => a - b), survival: 1 - died / paths, alive, yearEnds };
 }
 
 // pairwise Pearson correlations of the tickers' monthly returns over
@@ -1080,6 +1101,8 @@ function encodeState() {
   parts.push("rb=" + ($("rebal").value === "band" ? "band:" + $("rebalBand").value : $("rebal").value));
   if ($("bench").value !== "SPY") parts.push("b=" + encodeURIComponent($("bench").value));
   if (+$("mcYears").value !== 30) parts.push("mc=" + $("mcYears").value);
+  if (+$("mcGoalAmt").value > 0)
+    parts.push("g=" + $("mcGoalAmt").value + ":" + ($("mcGoalYr").value || ""));
   const td = (groups[TD_GROUP] || []).map(([t]) => encodeURIComponent(t));
   if (td.length) parts.push("td=" + td.join(","));
   return parts.join("&");
@@ -1134,6 +1157,11 @@ async function applyHash() {
   $("rebal").onchange();
   $("bench").value = "b" in q ? decodeURIComponent(q.b) : "SPY";
   if (q.mc) $("mcYears").value = q.mc;
+  if (q.g) {
+    const [a, y] = q.g.split(":");
+    $("mcGoalAmt").value = a || "";
+    $("mcGoalYr").value = y || "";
+  }
   run();
 }
 
@@ -1643,6 +1671,28 @@ function renderCorr({ runs, startM, endM }) {
 
 // ----- Monte Carlo projection -----
 let mcIdx = 0;
+let MC_CTX = null;   // last drawMC result, so goal-input edits don't re-resample
+
+// "chance of >= $X at year Y" from the sorted year-end path balances
+function updateGoal() {
+  const note = $("mcGoalNote");
+  if (!MC_CTX) { note.textContent = ""; return; }
+  $("mcGoalYr").placeholder = MC_CTX.years;
+  const amt = +$("mcGoalAmt").value;
+  if (!(amt > 0)) { note.textContent = "enter a goal amount to see the odds"; return; }
+  const yr = Math.min(MC_CTX.years, Math.max(1, Math.round(+$("mcGoalYr").value || MC_CTX.years)));
+  const arr = MC_CTX.mc.yearEnds[yr - 1];
+  let lo = 0, hi = arr.length;   // first index >= amt (array is sorted ascending)
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < amt) lo = mid + 1; else hi = mid; }
+  const hits = arr.length - lo;
+  note.innerHTML = `chance of ≥ ${fmt$(amt)} at year ${yr}: <b>${fmtPct(hits / arr.length, 1)}</b> ` +
+    `(${hits.toLocaleString("en-US")} of ${arr.length.toLocaleString("en-US")} paths)`;
+}
+["mcGoalAmt", "mcGoalYr"].forEach(id => $(id).oninput = () => {
+  if (!LAST) return;
+  updateGoal();
+  history.replaceState(null, "", "#" + encodeState());
+});
 
 function drawMC({ runs, cashflow }) {
   if (mcIdx >= runs.length) mcIdx = 0;
@@ -1705,6 +1755,53 @@ function drawMC({ runs, cashflow }) {
     `Final: 10th ${fmt$(q(0.1))} · median ${fmt$(q(0.5))} · 90th ${fmt$(q(0.9))}` +
     (withdrawing && cashflow.amount < 0
       ? ` · <b class="${mc.survival >= 0.85 ? "pos" : "neg"}">${(mc.survival * 100).toFixed(1)}% of paths survive</b>` : "");
+
+  // percentile table at 10/20/30y plus the horizon (same bands as the fan)
+  const colYears = [...new Set([10, 20, 30].filter(y => y <= years).concat(years))];
+  const PQ = [["90th percentile", 4], ["75th percentile", 3], ["Median", 2], ["25th percentile", 1], ["10th percentile", 0]];
+  let th = "<thead><tr><th>Balance</th>" + colYears.map(y => `<th>${y}y</th>`).join("") + "</tr></thead><tbody>";
+  PQ.forEach(([label, bi]) => {
+    const em = bi === 2 ? (s) => `<b>${s}</b>` : (s) => s;
+    th += `<tr><td>${em(label)}</td>` + colYears.map(y => `<td>${em(fmt$(mc.bands[bi][y * 12 - 1]))}</td>`).join("") + "</tr>";
+  });
+  $("mcTable").innerHTML = th + "</tbody>";
+
+  // survival-vs-year curve: only for fixed-$ withdrawals (rate mode and
+  // accumulation never deplete, so the curve would be a flat 100% line)
+  const sbox = $("mcSurv");
+  sbox.innerHTML = "";
+  if (withdrawing && cashflow.amount < 0) {
+    sbox.style.display = "";
+    const W2 = 1000, H2 = 170, P2 = { l: 78, r: 20, t: 22, b: 30 };
+    const s2 = el("svg", { viewBox: `0 0 ${W2} ${H2}` });
+    const Y2 = v => P2.t + (1 - v) * (H2 - P2.t - P2.b);
+    const X2 = m => P2.l + m / months * (W2 - P2.l - P2.r);
+    const xT = [];
+    for (let y = yrStep; y <= years; y += yrStep) xT.push({ x: X2(y * 12), v: y + "y" });
+    axisFrame(s2, W2, H2, P2, [0, 0.5, 1].map(v => ({ y: Y2(v), v })), v => fmtPct(v, 0), xT, v => v, Y2(0));
+    const cap = el("text", { x: P2.l, y: 13, fill: "var(--muted)", "font-size": 11.5 });
+    cap.textContent = "Paths surviving by year — where failure risk concentrates";
+    s2.append(cap);
+    const A = [1, ...mc.alive];
+    s2.append(el("path", { d: A.map((v, i) => (i ? "L" : "M") + X2(i).toFixed(1) + " " + Y2(v).toFixed(2)).join(""),
+                           fill: "none", stroke: r.color, "stroke-width": 2, "stroke-linejoin": "round" }));
+    const cr2 = el("line", { y1: P2.t, y2: H2 - P2.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden" });
+    s2.append(cr2);
+    const tip2 = tooltipFor(sbox);
+    s2.addEventListener("pointermove", e => {
+      const pt = s2.getBoundingClientRect();
+      const k = Math.round(Math.min(months, Math.max(0, ((e.clientX - pt.left) / pt.width * W2 - P2.l) / (W2 - P2.l - P2.r) * months)));
+      cr2.setAttribute("x1", X2(k)); cr2.setAttribute("x2", X2(k)); cr2.setAttribute("visibility", "visible");
+      tip2.innerHTML = `<div class="t-title">Year ${(k / 12).toFixed(1)}</div>` +
+        `<div class="row"><span class="dot" style="background:${r.color}"></span>surviving<span class="val">${fmtPct(A[k], 1)}</span></div>`;
+      placeTip(tip2, sbox, e.clientX - pt.left, e.clientY - pt.top);
+    });
+    s2.addEventListener("pointerleave", () => { cr2.setAttribute("visibility", "hidden"); tip2.style.display = "none"; });
+    sbox.append(s2);
+  } else sbox.style.display = "none";
+
+  MC_CTX = { mc, years };
+  updateGoal();
   $("mcNote").textContent =
     `1,000 paths from ${fmt$(startBal)} (the backtest's final balance), resampling its monthly returns in ` +
     `12-month blocks with the current cashflow settings (step-up restarts at projection year 1). ` +

@@ -34,7 +34,7 @@ Node-evaluable.
   publishes the data). Foreign listings additionally need the 4-tuple + the
   identity/gap/garbage-print probes (see Conventions).
 - **Engine or data changes must pass `node tests/sanity.js` before shipping**
-  (179 assertions at last count; it evals `data.js` + the engine block,
+  (189 assertions at last count; it evals `data.js` + the engine block,
   replacing `const PV_DATA` with `var` first — `const` inside `eval` doesn't
   escape to the caller's scope). Extend it when you add a metric or an asset.
   Known-good anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max
@@ -144,7 +144,7 @@ Node-evaluable.
   via `history.replaceState` after every successful `run()` (and on MC-horizon
   change); `applyHash()` at boot repopulates and auto-runs. Hash grammar:
   `p=TICKER:w1:w2:w3,…&s=YYYY-M&e=YYYY-M&i=…&cf=mode:amt:step&fee=…&
-  rb=N|band:X&b=BENCH&mc=YRS&td=SYM,…` — tickers URI-encoded (custom tickers
+  rb=N|band:X&b=BENCH&mc=YRS&g=GOAL$:YR&td=SYM,…` — tickers URI-encoded (custom tickers
   are user input), `b` omitted means the SPY default, `td` carries custom
   tickers by symbol ONLY. The API key must never enter a URL. Custom tickers
   in a hash auto-fetch when `pv_td_key` is stored; otherwise `#customStatus`
@@ -163,7 +163,18 @@ Node-evaluable.
   deterministic — the seed is what keeps `tests/sanity.js` assertable. The
   survival note renders only for fixed withdrawals ($ mode); the card warns
   when history < 120 months (a short bull sample projects fantasy fans —
-  a 2022-start window projected $33M medians during testing).
+  a 2022-start window projected $33M medians during testing). Goal metrics
+  ride the same paths: `monteCarlo()` also returns `alive` (per-month
+  surviving fraction; at the horizon it equals `survival` exactly — asserted)
+  and `yearEnds` (references to the already-sorted per-month arrays at year
+  boundaries, NOT copies — don't mutate them). The card's percentile table
+  reads the bands at 10/20/30y+horizon; the goal input ("chance of ≥ $X by
+  year Y") binary-searches `yearEnds` via `updateGoal()` against the cached
+  `MC_CTX` — typing in it never re-resamples — and serializes as `g=` in the
+  hash; the survival-vs-year curve renders only in fixed-$ withdrawal mode
+  (rate mode and accumulation never deplete, the curve would be flat 100%).
+  A backtest that itself depletes hands the projection a $0 start — all-zero
+  table/fan and an instant 0% curve are correct there, not a bug.
 - Custom tickers (opt-in Twelve Data fetch — see `DATA-API-PLAN.md` for why
   that provider): fetched series are merged into the **in-memory**
   `PV_DATA.series` only — `data.js` stays untouched — under group
