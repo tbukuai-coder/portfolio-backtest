@@ -80,11 +80,16 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(Math.abs(self.r2 - 1) < 1e-12, "SPY vs SPY R2 = 1");
   assert(self.te === 0 && Number.isNaN(self.ir), "SPY vs SPY TE = 0, IR NaN");
   assert(Math.abs(self.corr - 1) < 1e-12, "SPY vs SPY corr = 1");
+  assert(self.upCap === 1 && self.dnCap === 1, "SPY vs SPY capture = 100/100 exactly");
   const bal = computeBenchStats(sim1([{ t: "SPY", w: 60 }, { t: "AGG", w: 40 }]), spyT, rf1);
   console.log("60/40 vs SPY: beta", bal.beta.toFixed(3), "alpha", (bal.alpha * 100).toFixed(2),
-              "R2", bal.r2.toFixed(3), "TE", (bal.te * 100).toFixed(2), "IR", bal.ir.toFixed(2));
+              "R2", bal.r2.toFixed(3), "TE", (bal.te * 100).toFixed(2), "IR", bal.ir.toFixed(2),
+              "up", (bal.upCap * 100).toFixed(0), "down", (bal.dnCap * 100).toFixed(0));
   assert(bal.beta > 0.52 && bal.beta < 0.68, "60/40 beta ~0.6");
   assert(bal.r2 > 0.9, "60/40 R2 > 0.9");
+  assert(bal.upCap > 0.55 && bal.upCap < 0.75, "60/40 up capture ~65%");
+  assert(bal.dnCap > 0.45 && bal.dnCap < 0.70, "60/40 down capture ~60%");
+  assert(bal.dnCap < bal.upCap, "60/40 captures more upside than downside");
   const qqq = computeBenchStats(sim1([{ t: "QQQ", w: 100 }]), spyT, rf1);
   console.log("QQQ vs SPY: beta", qqq.beta.toFixed(3), "corr", qqq.corr.toFixed(3));
   assert(qqq.beta > 1, "QQQ beta > 1");
@@ -127,6 +132,52 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
     mv = mv * (1 + ret("SPY", m)) + mAmt;
   }
   assert(Math.abs(st3.balances.at(-1).v - mv) < 1e-6, "step-up balance matches manual reconstruction");
+}
+
+// Money-weighted return (IRR)
+{
+  const s4 = mIdx("2004-01");
+  const plain = simulate([{ t: "SPY", w: 100 }], s4, endM, 10000, 0, 0);
+  const cagr = computeStats(plain, rfFrom(s4), null).cagr;
+  assert(Math.abs(moneyWeightedReturn(plain) - cagr) < 1e-9, "no cashflows -> MWR = CAGR");
+  // constant 1%/mo: the account grows at exactly the discount rate, so the
+  // IRR is exactly 1%/mo no matter what the cashflow pattern is
+  const twr = Array(120).fill(0.01);
+  const balances = [{ m: -1, v: 10000 }];
+  let mv = 10000;
+  twr.forEach((r, i) => { mv = mv * 1.01 + 200; balances.push({ m: i, v: mv }); });
+  assert(Math.abs(moneyWeightedReturn({ twr, balances }) - (Math.pow(1.01, 12) - 1)) < 1e-9,
+         "constant 1%/mo + contributions -> IRR exactly 1%/mo annualized");
+  // DCA over a front-loaded stretch (1994 -> the 2009 trough): late dollars
+  // caught the crashes, so MWR sits well below the strategy's TWR CAGR
+  const dca = simulate([{ t: "SPY", w: 100 }], mIdx("1994-01"), mIdx("2009-12"), 10000, 500, 0);
+  const mwrD = moneyWeightedReturn(dca);
+  const cagrD = Math.pow(dca.twr.reduce((p, r) => p * (1 + r), 1), 12 / dca.twr.length) - 1;
+  console.log("SPY DCA 1994-2009: TWR", (cagrD * 100).toFixed(2), "MWR", (mwrD * 100).toFixed(2));
+  assert(isFinite(mwrD) && mwrD < cagrD - 0.01, "DCA into front-loaded returns -> MWR < TWR");
+  // depletion: dead post-depletion months are trimmed, IRR stays sensible
+  // (investor got their ~10k back over ~21 months at cash-ish rates)
+  const dep = simulate([{ t: "CASHX", w: 100 }], s4, endM, 10000, { amount: -500 }, 0);
+  const mwrDep = moneyWeightedReturn(dep);
+  console.log("depleted MWR", (mwrDep * 100).toFixed(2));
+  assert(isFinite(mwrDep) && Math.abs(mwrDep) < 0.10, "depleted portfolio MWR finite and near cash rate");
+  assert(isFinite(moneyWeightedReturn(simulate([{ t: "SPY", w: 100 }], s4, endM, 10000, { rate: 4 }, 0))),
+         "percent-withdrawal MWR finite");
+}
+
+// Rolling Sharpe
+{
+  // alternating 2%/0% excess: mean .01, sample sd .01*sqrt(12/11) -> Sharpe = sqrt(11)
+  const alt = Array.from({ length: 24 }, (_, i) => i % 2 ? 0.01 : 0.03);
+  const rs = rollingSharpe(alt, Array(24).fill(0.01), 12);
+  assert(rs.length === 13, "rolling sharpe length = n - w + 1");
+  assert(rs.every(v => Math.abs(v - Math.sqrt(11)) < 1e-12), "alternating excess -> Sharpe = sqrt(11) exactly");
+  assert(Number.isNaN(rollingSharpe(Array(12).fill(0.01), Array(12).fill(0.01), 12)[0]),
+         "zero-variance window -> NaN (rendered as em dash / pen lift)");
+  // full-sample window reproduces the summary Sharpe (same estimator)
+  const full = rollingSharpe(spy.twr, rfFrom(s0), spy.twr.length);
+  assert(full.length === 1 && Math.abs(full[0] - st.sharpe) < 1e-12,
+         "full-window rolling Sharpe = summary Sharpe");
 }
 
 // Tolerance-band rebalancing

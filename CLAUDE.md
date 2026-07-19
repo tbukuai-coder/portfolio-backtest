@@ -14,7 +14,8 @@ script tag works from `file://`, `fetch` does not; that's what keeps the page
 serverless). `index.html` holds everything else in two `<script>` blocks: the
 **engine block** (pure functions between `/*==ENGINE-START==*/` and
 `/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()` incl.
-Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `computeBenchStats()`,
+Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `rollingSharpe()`,
+`moneyWeightedReturn()`, `computeBenchStats()` incl. up/down capture,
 `corrMatrix()`, `monteCarlo()` + `mulberry32()` seeded PRNG) and the
 **app block** (DOM, form handling, SVG chart rendering). The marker comments are
 load-bearing: `tests/sanity.js` evals both blocks in Node. Don't rename or
@@ -33,20 +34,22 @@ Node-evaluable.
   publishes the data). Foreign listings additionally need the 4-tuple + the
   identity/gap/garbage-print probes (see Conventions).
 - **Engine or data changes must pass `node tests/sanity.js` before shipping**
-  (154 assertions at last count; it evals `data.js` + the engine block,
+  (167 assertions at last count; it evals `data.js` + the engine block,
   replacing `const PV_DATA` with `var` first — `const` inside `eval` doesn't
   escape to the caller's scope). Extend it when you add a metric or an asset.
   Known-good anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max
   drawdown ≈ −50.8% (trough Feb 2009), longest underwater 75 mo from Aug 2000
   (dot-com beat the GFC), worst rolling 10y ≈ −3.5%/yr, Ulcer ≈ 14%; All
   Weather's worst year is 2022; SPY-vs-SPY benchmark stats are exact identities
-  (beta 1, alpha 0, R² 1, TE 0, IR NaN); MAYBANK (USD) from 2004 → CAGR ≈ 7.9%.
-  Invariance identities are asserted exactly: contributions leave single-asset
+  (beta 1, alpha 0, R² 1, TE 0, IR NaN, up/down capture 100/100); MAYBANK (USD)
+  from 2004 → CAGR ≈ 7.9%. Invariance identities are asserted exactly: contributions leave single-asset
   TWR unchanged, pro-rata withdrawals leave even multi-asset TWR unchanged,
   band ~0 ≡ monthly and band ∞ ≡ never, fee 0 is a no-op and net twr =
-  (1+gross)(1−fee/12)−1 per month, Monte Carlo reproduces byte-identical bands
-  from the same seed (compare with tolerances, not stringify, wherever float
-  noise ~1e-15 applies).
+  (1+gross)(1−fee/12)−1 per month, no cashflows → MWR = CAGR and a constant
+  1%/mo return → IRR exactly 1%/mo whatever the flows, a full-sample rolling
+  Sharpe window = the summary Sharpe, Monte Carlo reproduces byte-identical
+  bands from the same seed (compare with tolerances, not stringify, wherever
+  float noise ~1e-15 applies).
 - **Render-check both themes.** No build/lint exists; verification is headless
   Chromium via Python playwright (installed in this studio): load the page over
   `file://`, click `#exampleBtn` then `#runBtn`, screenshot with
@@ -107,10 +110,21 @@ Node-evaluable.
   and would otherwise produce a garbage beta instead of "—". `fmtPct`/`fmtNum`
   and the pos/neg wrapper are NaN-safe (render "—"); keep new formatters that
   way.
-- Rolling returns: `rollWin` (12/36/60/120 months, default 36) persists across
-  runs; windows longer than the sample are hidden and the active window falls
-  back to the largest available. The best/worst/average table always covers
-  every available window regardless of the chart's active one.
+- Rolling returns: `rollWin` (12/36/60/120 months, default 36) and `rollMetric`
+  ("ret" | "sharpe") persist across runs; windows longer than the sample are
+  hidden and the active window falls back to the largest available. The
+  best/worst/average table always covers every available window regardless of
+  the chart's active one, in the active metric. `rollingSharpe()` returns NaN
+  for zero-variance windows (pure-cash legs) — the chart path lifts the pen
+  across NaN gaps and table cells render "—"; keep both guards if you add a
+  third metric. The Sharpe view needs `LAST.rf` (stashed by `run()`).
+- Money-weighted return: `moneyWeightedReturn(sim)` recovers actual monthly
+  flows from the sim (`flow = bal − prevBal·(1+twr)`) and bisects the
+  future-value (Horner) form of NPV — do NOT rewrite it as discounted NPV,
+  which underflows to 0/0 = NaN near rate −1 and silently converges to −100%.
+  Post-depletion months (zero flow, zero balance) are trimmed first for the
+  same reason. The summary row renders only when a cashflow mode is active
+  (without cashflows MWR ≡ CAGR, so the row would be noise).
 - Monthly heatmap: diverging blue↔red fill via
   `color-mix(in oklab, var(--hm-pos|--hm-neg) t%, var(--hm-mid))`, saturating
   at ±8%/mo. The `--hm-*` poles are per-theme (darker in dark mode so white

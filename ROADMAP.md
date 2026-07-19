@@ -45,19 +45,23 @@ history and `CLAUDE.md`.
 
 ## Metrics & analytics (all feed on `sim.twr`)
 
-- [ ] **Money-weighted return (IRR)** — with cashflows active, TWR describes
-      the strategy but not the investor's actual dollar experience; solve
-      the monthly IRR of {initial, cashflows, final balance} by bisection
-      and show annualized MWR beside CAGR whenever a cashflow mode is on.
-      Node anchors: no cashflows → MWR equals CAGR; contributions into a
-      rising market → MWR < TWR (late money bought high).
-- [ ] **Up/down capture ratios** — % of benchmark's average up-month return
-      captured in up months, same for down months; the aligned benchmark
-      series already exists in the `vs` pipeline. Two summary rows next to
-      beta. Node anchor: SPY vs SPY = 100/100 exactly.
-- [ ] **Rolling Sharpe toggle** — second metric on the rolling-returns card
-      (the rf series is already aligned); same windows, same table. Cheap
-      once the rolling scaffolding exists.
+- [x] **Money-weighted return (IRR)** — built 2026-07-19:
+      `moneyWeightedReturn(sim)` recovers the actual monthly flows from the
+      sim (`flow = bal − prevBal·(1+twr)`, so rate-mode and depletion-capped
+      amounts come out exactly), then bisects the future-value (Horner) form
+      of NPV — the discounted form underflows near rate = −1. Summary row
+      beside CAGR whenever a cashflow mode is on. Anchors: no cashflows →
+      MWR = CAGR; constant 1%/mo → IRR exactly 1%/mo regardless of flows;
+      DCA over 1994→2009 (front-loaded returns) → MWR < TWR; depleted and
+      %-mode runs stay finite (post-depletion dead months are trimmed).
+- [x] **Up/down capture ratios** — built 2026-07-19 in `computeBenchStats`
+      (sum-ratio form; raw returns, not excess). Two summary rows next to
+      beta. Anchored: SPY vs SPY = 100/100 exactly, 60/40 ≈ 66/60.
+- [x] **Rolling Sharpe toggle** — built 2026-07-19: Return ↔ Sharpe segmented
+      toggle on the rolling card, same windows, same best/worst/average
+      table; `rollingSharpe()` is NaN for zero-variance windows (pure cash),
+      the chart lifts the pen and the table renders "—". Anchors: alternating
+      excess → Sharpe = √11 exactly; full-sample window = summary Sharpe.
 - [ ] **Return distribution histogram** — monthly-return histogram per
       portfolio (single-hue bars, count labels), with mean/median/skew
       readouts. Lower priority: the heatmap already tells most of this

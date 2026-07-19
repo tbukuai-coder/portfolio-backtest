@@ -299,7 +299,8 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
 
     <div class="card">
       <div class="chart-head">
-        <h2>Rolling returns <span class="note">(annualized)</span></h2>
+        <h2 id="rollTitle">Rolling returns <span class="note">(annualized)</span></h2>
+        <span class="seg" id="rollMetricSeg"></span>
         <span class="seg" id="rollWins"></span>
       </div>
       <div class="legend" id="rollLegend"></div>
@@ -344,11 +345,16 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
     Cashflows happen at month-end — contributions buy at target weights, withdrawals sell pro-rata
     (step-ups each January; a fixed withdrawal that exhausts the balance marks the portfolio depleted);
     rebalancing happens on calendar boundaries (Dec for annual, quarter-ends for quarterly). CAGR, volatility, drawdowns, Sharpe and Sortino are
-    computed on time-weighted monthly returns, so contributions don't distort them. Sharpe = mean monthly
-    excess return over 3-month T-bills ÷ its standard deviation, annualized ×√12; Sortino uses downside
+    computed on time-weighted monthly returns, so contributions don't distort them. With a cashflow mode
+    active, the money-weighted return (IRR) is also shown: the discount rate that prices the initial amount,
+    every monthly cashflow, and the final balance — the return the investor's actual dollars earned (with no
+    cashflows it equals CAGR). Sharpe = mean monthly
+    excess return over 3-month T-bills ÷ its standard deviation, annualized ×√12 (the rolling Sharpe view
+    applies the same formula per trailing window); Sortino uses downside
     deviation of the same excess returns. Beta/alpha/R² are a CAPM regression of monthly excess returns on
     the benchmark's (alpha annualized); tracking error = annualized st.dev. of monthly active returns, and
-    information ratio = annualized mean active return ÷ tracking error. Max drawdown is month-end based
+    information ratio = annualized mean active return ÷ tracking error. Up (down) capture = the portfolio's
+    average return across the benchmark's up (down) months ÷ the benchmark's own average in those months. Max drawdown is month-end based
     (intra-month dips are invisible); longest underwater is the peak-to-recovery span of the longest
     drawdown episode. Calmar = CAGR ÷ |max drawdown|; Ulcer index = RMS of the monthly drawdown series;
     Martin ratio = annualized mean excess return ÷ Ulcer index.
@@ -519,6 +525,53 @@ function rollingCAGR(twr, w) {
   return out;
 }
 
+// Annualized money-weighted return (IRR) of the investor's actual dollars:
+// initial balance out at month 0, each month-end net cashflow (recovered from
+// the sim as flow = bal − prevBal·(1+twr), so rate-mode and depletion-capped
+// amounts come out exactly as applied), final balance back at month n. Solves
+// the monthly rate by bisection on NPV; with no cashflows this equals CAGR
+// exactly. NaN when no root lies in (−99%, +100%)/mo.
+function moneyWeightedReturn(sim) {
+  const { twr, balances } = sim;
+  const flows = twr.map((r, i) => balances[i + 1].v - balances[i].v * (1 + r));
+  // drop post-depletion dead months (zero flow, zero balance): they add
+  // nothing to the IRR but underflow fv() near rate = −1
+  let n = twr.length;
+  while (n > 1 && flows[n - 1] === 0 && balances[n].v === 0) n--;
+  // future-value (Horner) form of NPV: grow the account forward instead of
+  // discounting — same root, but no tiny-divisor underflow near rate = −1
+  const fv = rate => {
+    let v = -balances[0].v;
+    for (let m = 0; m < n; m++) v = v * (1 + rate) - flows[m];
+    return v + balances[n].v;
+  };
+  let lo = -0.99, hi = 1, flo = fv(lo);
+  if (flo * fv(hi) > 0) return NaN;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2, f = fv(mid);
+    if (f * flo > 0) { lo = mid; flo = f; } else hi = mid;
+  }
+  return Math.pow(1 + (lo + hi) / 2, 12) - 1;
+}
+
+// annualized Sharpe of every trailing w-month window (same alignment as
+// rollingCAGR: result[k] covers months [k, k+w-1]); sample st.dev., NaN for a
+// zero-variance window (e.g. pure cash)
+function rollingSharpe(twr, rf, w) {
+  const ex = twr.map((r, i) => r - rf[i]);
+  const out = [];
+  for (let i = w; i <= ex.length; i++) {
+    let s = 0;
+    for (let k = i - w; k < i; k++) s += ex[k];
+    const mean = s / w;
+    let s2 = 0;
+    for (let k = i - w; k < i; k++) s2 += (ex[k] - mean) ** 2;
+    const sd = Math.sqrt(s2 / (w - 1));
+    out.push(sd > 0 ? mean / sd * Math.sqrt(12) : NaN);
+  }
+  return out;
+}
+
 // deterministic PRNG for reproducible Monte Carlo (and Node assertions)
 function mulberry32(a) {
   return function () {
@@ -623,7 +676,18 @@ function computeBenchStats(twr, bench, rf) {
   const asd = Math.sqrt(act.reduce((s, r) => s + (r - am) ** 2, 0) / (n - 1));
   const te = asd * Math.sqrt(12);
   const ir = te > 0 ? am * 12 / te : NaN;
-  return { beta, alpha, r2, te, ir, corr };
+  // up/down capture: the portfolio's average return across the benchmark's
+  // up (down) months as a fraction of the benchmark's own average in those
+  // same months — the month counts cancel, so it reduces to a sum ratio.
+  // SPY vs SPY is exactly 1/1 (raw returns, not excess).
+  let upP = 0, upB = 0, dnP = 0, dnB = 0;
+  for (let i = 0; i < n; i++) {
+    if (bench[i] > 0) { upP += twr[i]; upB += bench[i]; }
+    else if (bench[i] < 0) { dnP += twr[i]; dnB += bench[i]; }
+  }
+  const upCap = upB > 0 ? upP / upB : NaN;
+  const dnCap = dnB < 0 ? dnP / dnB : NaN;
+  return { beta, alpha, r2, te, ir, corr, upCap, dnCap };
 }
 /*==ENGINE-END==*/
 </script>
@@ -922,10 +986,12 @@ function run() {
   const rf = [], market = [];
   for (let m = startM; m <= endM; m++) { rf.push(ret("CASHX", m)); market.push(ret("SPY", m)); }
 
+  const cfActive = !!(cashflow.amount || cashflow.rate);
   runs.forEach(r => {
     // the benchmark run stays gross-of-fee; portfolios carry the fee
     r.sim = simulate(r.alloc, startM, endM, initial, cashflow, rebal, r.isBench ? 0 : fee);
     r.stats = computeStats(r.sim, rf, market);
+    if (cfActive) r.stats.mwr = moneyWeightedReturn(r.sim);
   });
 
   // benchmark-relative stats: the benchmark series is either the dedicated
@@ -936,7 +1002,7 @@ function run() {
     runs.forEach(r => { r.stats.vs = computeBenchStats(r.sim.twr, benchRun.sim.twr, rf); });
   }
 
-  LAST = { runs, startM, endM, initial, benchT, band: bandMode ? band : null, cashflow };
+  LAST = { runs, startM, endM, initial, benchT, band: bandMode ? band : null, cashflow, rf };
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     cfNote +
@@ -1035,7 +1101,7 @@ async function applyHash() {
 }
 
 // ----- summary table -----
-function renderSummary({ runs, benchT, band }) {
+function renderSummary({ runs, benchT, band, cashflow }) {
   const rows = [
     ["Final balance", r => fmt$(r.sim.balances.at(-1).v) +
       (r.sim.depleted ? ` <span class="neg">(depleted ${mLabel(r.sim.depleted)})</span>` : "")],
@@ -1055,11 +1121,17 @@ function renderSummary({ runs, benchT, band }) {
     ["Ulcer index", r => fmtPct(r.stats.ulcer, 2)],
     ["Martin ratio", r => fmtNum(r.stats.martin)],
   ];
+  // TWR describes the strategy; with cashflows on, MWR describes the
+  // investor's actual dollar experience — show it right beside CAGR
+  if (cashflow && (cashflow.amount || cashflow.rate))
+    rows.splice(2, 0, ["Money-weighted return (IRR)", r => cls(fmtPct(r.stats.mwr, 2), r.stats.mwr)]);
   if (band) rows.push([`Rebalances (${band}% band)`, r => String(r.sim.rebals)]);
   if (benchT) {
     rows.push(
       [`Correlation to ${benchT}`, r => fmtNum(r.stats.vs.corr)],
       [`Beta (vs ${benchT})`, r => fmtNum(r.stats.vs.beta)],
+      ["Up capture", r => fmtPct(r.stats.vs.upCap, 0)],
+      ["Down capture", r => fmtPct(r.stats.vs.dnCap, 0)],
       ["Alpha (ann.)", r => cls(fmtPct(r.stats.vs.alpha, 2), r.stats.vs.alpha)],
       ["R²", r => fmtNum(r.stats.vs.r2)],
       ["Tracking error (ann.)", r => fmtPct(r.stats.vs.te, 2)],
@@ -1316,26 +1388,37 @@ function drawDrawdowns({ runs, startM, endM }) {
 
 // ----- rolling returns -----
 const ROLL_WINDOWS = [{ w: 12, label: "1y" }, { w: 36, label: "3y" }, { w: 60, label: "5y" }, { w: 120, label: "10y" }];
-let rollWin = 36;
+let rollWin = 36, rollMetric = "ret";
 
-function drawRolling({ runs, startM, endM }) {
+function drawRolling({ runs, startM, endM, rf }) {
   const n = endM - startM + 1;
   const avail = ROLL_WINDOWS.filter(x => x.w <= n);   // run() guarantees n >= 12
   if (!avail.some(x => x.w === rollWin)) rollWin = avail[avail.length - 1].w;
+  const sharpe = rollMetric === "sharpe";
+  $("rollTitle").innerHTML = (sharpe ? "Rolling Sharpe" : "Rolling returns") +
+    ' <span class="note">(annualized)</span>';
+  $("rollMetricSeg").innerHTML = [["ret", "Return"], ["sharpe", "Sharpe"]].map(([k, label]) =>
+    `<button class="${k === rollMetric ? "active" : ""}" data-k="${k}">${label}</button>`).join("");
+  $("rollMetricSeg").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { rollMetric = b.dataset.k; drawRolling(LAST); });
   $("rollWins").innerHTML = avail.map(x =>
     `<button class="${x.w === rollWin ? "active" : ""}" data-w="${x.w}">${x.label}</button>`).join("");
   $("rollWins").querySelectorAll("button").forEach(b =>
     b.onclick = () => { rollWin = +b.dataset.w; drawRolling(LAST); });
   $("rollLegend").innerHTML = legendHTML(runs);
 
+  const roll = (twr, w) => sharpe ? rollingSharpe(twr, rf, w) : rollingCAGR(twr, w);
+  const fmtV = sharpe ? v => fmtNum(v) : v => fmtPct(v);
+  const fmtAxis = sharpe ? v => v.toFixed(1) : v => fmtPct(v, 0);
+
   const w = rollWin, first = startM + w - 1;
-  const series = runs.map(r => rollingCAGR(r.sim.twr, w));
+  const series = runs.map(r => roll(r.sim.twr, w));
 
   const box = $("rollChart");
   box.innerHTML = "";
   const W = 1000, H = 300, PAD = { l: 64, r: 20, t: 12, b: 30 };
   const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
-  const all = series.flat();
+  const all = series.flat().filter(isFinite);   // rolling Sharpe is NaN on zero-variance windows
   const lo = Math.min(0, ...all), hi = Math.max(0, ...all);
   const Y = v => PAD.t + (hi - v) / (hi - lo || 1) * (H - PAD.t - PAD.b);
   const X = m => PAD.l + (m - first) / (endM - first || 1) * (W - PAD.l - PAD.r);
@@ -1345,10 +1428,15 @@ function drawRolling({ runs, startM, endM }) {
   const yrStep = Math.max(1, Math.ceil(yearsSpan / 10));
   const xTicks = [];
   for (let y = Math.ceil(first / 12); y * 12 <= endM; y += yrStep) xTicks.push({ x: X(y * 12), v: y });
-  axisFrame(svg, W, H, PAD, yTicks, v => fmtPct(v, 0), xTicks, v => v, Y(0));
+  axisFrame(svg, W, H, PAD, yTicks, fmtAxis, xTicks, v => v, Y(0));
 
   runs.forEach((r, ri) => {
-    const d = series[ri].map((v, k) => (k ? "L" : "M") + X(first + k).toFixed(1) + " " + Y(v).toFixed(1)).join("");
+    let d = "", pen = false;   // lift the pen across NaN gaps
+    series[ri].forEach((v, k) => {
+      if (!isFinite(v)) { pen = false; return; }
+      d += (pen ? "L" : "M") + X(first + k).toFixed(1) + " " + Y(v).toFixed(1);
+      pen = true;
+    });
     svg.append(el("path", { d, fill: "none", stroke: r.color, "stroke-width": 2,
                             "stroke-linejoin": "round", "stroke-linecap": "round" }));
   });
@@ -1365,26 +1453,31 @@ function drawRolling({ runs, startM, endM }) {
     cross.setAttribute("visibility", "visible");
     tip.innerHTML = `<div class="t-title">${w / 12}y to ${mLabel(m)}</div>` + runs.map((r, ri) => {
       const v = series[ri][m - first];
-      return `<div class="row"><span class="dot" style="background:${r.color}"></span>${r.label}<span class="val">${fmtPct(v)}</span></div>`;
+      return `<div class="row"><span class="dot" style="background:${r.color}"></span>${r.label}<span class="val">${fmtV(v)}</span></div>`;
     }).join("");
     placeTip(tip, box, e.clientX - pt.left, e.clientY - pt.top);
   });
   svg.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
   box.append(svg);
 
-  // best/worst/average table across every available window
-  const sgn = v => `<span class="${v >= 0 ? "pos" : "neg"}">${fmtPct(v)}</span>`;
+  // best/worst/average table across every available window (active metric)
+  const sgn = v => isFinite(v) ? `<span class="${v >= 0 ? "pos" : "neg"}">${fmtV(v)}</span>` : "—";
   let h = "<thead><tr><th>Window</th>" +
     runs.map(r => `<th><span class="legend"><span class="key"><span class="dot" style="background:${r.color}"></span>${r.label}</span></span></th>`).join("") +
     "</tr></thead><tbody>";
   avail.forEach(x => {
-    const roll = runs.map(r => rollingCAGR(r.sim.twr, x.w));
-    const stat = roll.map(s => {
-      let bi = 0, wi = 0;
-      s.forEach((v, k) => { if (v > s[bi]) bi = k; if (v < s[wi]) wi = k; });
-      return { avg: s.reduce((a, b) => a + b, 0) / s.length, bi, wi, s };
+    const rolls = runs.map(r => roll(r.sim.twr, x.w));
+    const stat = rolls.map(s => {
+      let bi = -1, wi = -1, sum = 0, nn = 0;
+      s.forEach((v, k) => {
+        if (!isFinite(v)) return;
+        sum += v; nn++;
+        if (bi < 0 || v > s[bi]) bi = k;
+        if (wi < 0 || v < s[wi]) wi = k;
+      });
+      return { avg: nn ? sum / nn : NaN, bi, wi, s };
     });
-    const end = k => `<span class="note">(to ${mLabel(startM + x.w - 1 + k)})</span>`;
+    const end = k => k < 0 ? "" : `<span class="note">(to ${mLabel(startM + x.w - 1 + k)})</span>`;
     h += `<tr><td>${x.label} average</td>` + stat.map(t => `<td>${sgn(t.avg)}</td>`).join("") + "</tr>";
     h += `<tr><td>${x.label} best</td>` + stat.map(t => `<td>${sgn(t.s[t.bi])} ${end(t.bi)}</td>`).join("") + "</tr>";
     h += `<tr><td>${x.label} worst</td>` + stat.map(t => `<td>${sgn(t.s[t.wi])} ${end(t.wi)}</td>`).join("") + "</tr>";

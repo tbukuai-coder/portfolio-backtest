@@ -29,10 +29,14 @@ or on GitHub Pages.
   **tolerance band** with a rebalance count / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
   max drawdown, longest underwater stretch, Sharpe, Sortino, Calmar, Ulcer index,
-  Martin ratio — plus benchmark-relative stats when a benchmark is selected:
-  correlation, beta, annualized alpha, R², tracking error, information ratio
+  Martin ratio — with a cashflow mode active, also the **money-weighted return
+  (IRR)**: what the investor's actual dollars earned, vs. the time-weighted CAGR —
+  plus benchmark-relative stats when a benchmark is selected:
+  correlation, beta, **up/down capture ratios**, annualized alpha, R², tracking
+  error, information ratio
 - Portfolio growth chart (linear/log), annual returns bars, drawdown chart with
-  worst-drawdown episode tables, rolling returns (1/3/5/10-year window toggle
+  worst-drawdown episode tables, rolling returns (1/3/5/10-year window toggle,
+  a **return ↔ Sharpe metric toggle**,
   plus a best/worst/average table across all windows), monthly returns heatmap
   (year × month, diverging blue↔red fill with a portfolio selector), asset
   correlation matrix (the backtest's assets over its window), **Monte Carlo
@@ -100,14 +104,22 @@ universe, the embedded data takes precedence.
   quarter-ends for quarterly), or — in tolerance-band mode — whenever any
   weight drifts more than X percentage points from target, checked monthly
   after cashflows; the summary reports how often the band triggered.
+- With a cashflow mode active the summary adds the **money-weighted return
+  (IRR)**: the discount rate that prices the initial amount, every monthly
+  cashflow, and the final balance to zero (solved by bisection). TWR answers
+  "how did the strategy do?"; MWR answers "how did *my dollars* do?" — with no
+  cashflows the two are identical.
 - Sharpe = mean monthly excess return over the 3-month T-bill ÷ its standard
   deviation, × √12. Sortino replaces the denominator with the downside deviation
-  of the same excess returns.
+  of the same excess returns. The rolling chart's Sharpe view applies the same
+  formula per trailing window.
 - Beta, alpha and R² come from a CAPM regression of the portfolio's monthly
   excess returns (over the 3-month T-bill) on the benchmark's; alpha is
   annualized geometrically. Tracking error is the annualized standard deviation
   of monthly active returns (portfolio − benchmark); information ratio is the
-  annualized mean active return ÷ tracking error.
+  annualized mean active return ÷ tracking error. Up (down) capture is the
+  portfolio's average return across the benchmark's up (down) months as a
+  percentage of the benchmark's own average in those months.
 - Monte Carlo resamples the backtest's own monthly returns in 12-month blocks
   (preserving volatility clustering), with a fixed seed so results are
   reproducible; it is only as representative as the backtest window it
