@@ -101,7 +101,10 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(endM <= prevM && endM >= prevM - 1,
          "data end " + PV_DATA.end + " within a month of current (prev complete = " + mKey(prevM) + ")");
 }
-assert(Object.keys(PV_DATA.series).length === 37, "37 series embedded");
+assert(Object.keys(PV_DATA.series).length === 40, "40 series embedded");
+assert(PV_DATA.series.VT?.group === "International" && PV_DATA.series.VT.start === "2008-07", "VT embedded from 2008-07");
+assert(PV_DATA.series.AVUV?.group === "US Equity" && PV_DATA.series.AVUV.start === "2019-10", "AVUV embedded from 2019-10");
+assert(PV_DATA.series.AVDV?.group === "International" && PV_DATA.series.AVDV.start === "2019-10", "AVDV embedded from 2019-10");
 
 // Malaysia group: USD-converted Bursa listings + EWM
 {
