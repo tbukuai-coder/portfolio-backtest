@@ -11,12 +11,14 @@ history and `CLAUDE.md`.
 
 ## Near-term polish
 
-- [ ] **Shareable URLs** — serialize the whole form (allocations, dates,
-      cashflow mode/amount/step-up, fee, rebalancing incl. band, benchmark,
-      MC horizon) into the location hash and auto-run on load. Portfolio
-      Visualizer's most-used feature after the backtest itself. Custom
-      tickers serialize by symbol only — never the API key; prompt for a
-      key on load if the hash names custom tickers and none is stored.
+- [x] **Shareable URLs** — built 2026-07-19: `encodeState()`/`applyHash()`;
+      every run (and MC-horizon change) `history.replaceState`s the full
+      form into the hash — allocations, dates, initial, cashflow, fee,
+      rebalancing incl. band, benchmark, MC horizon, custom tickers by
+      SYMBOL only (never the key). On load a hash auto-populates and runs;
+      custom tickers auto-fetch when a key is stored, otherwise the page
+      prompts. Round-trip verified: restored page reproduces the identical
+      summary and re-serializes to the identical hash.
 - [ ] **Preset portfolios dropdown** — 60/40, Three-Fund, All Weather,
       Permanent Portfolio, Golden Butterfly next to `#exampleBtn`. All
       constituents are already in the universe; it's just named weight sets.

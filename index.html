@@ -790,6 +790,27 @@ function parseTdSeries(json) {
   return { name: `${meta.exchange || "custom"} · Twelve Data${cur}`, group: TD_GROUP, start, end: rows.at(-1).m, r };
 }
 
+// fetch + install one custom ticker; returns null on success or an error string
+async function fetchCustom(t, key) {
+  let json;
+  try {
+    const resp = await fetch("https://api.twelvedata.com/time_series" +
+      `?symbol=${encodeURIComponent(t)}&interval=1month&outputsize=5000&adjust=all&apikey=${encodeURIComponent(key)}`);
+    json = await resp.json();
+  } catch (e) { return "Network error — offline, or the request was blocked."; }
+  if (json.status === "error" || !json.values) {
+    return json.code === 401 ? "Twelve Data rejected the API key." :
+      json.code === 404 ? `Symbol ${t} not found on Twelve Data.` :
+      json.code === 429 ? "Rate limited (free plan allows 8 calls/min) — wait a minute and retry." :
+      `Twelve Data error: ${json.message || "unknown"}`;
+  }
+  const s = parseTdSeries(json);
+  if (s.error) return s.error;
+  installCustom(t, s);
+  const c = tdCache(); c.series[t] = s; tdSaveCache(c);
+  return null;
+}
+
 async function addCustomTicker() {
   const t = $("tdTicker").value.trim().toUpperCase();
   const key = $("tdKey").value.trim();
@@ -799,24 +820,9 @@ async function addCustomTicker() {
   if (!key) { status.textContent = "Enter your Twelve Data API key first."; return; }
   localStorage.setItem("pv_td_key", key);
   status.textContent = `Fetching ${t}…`;
-  let json;
-  try {
-    const resp = await fetch("https://api.twelvedata.com/time_series" +
-      `?symbol=${encodeURIComponent(t)}&interval=1month&outputsize=5000&adjust=all&apikey=${encodeURIComponent(key)}`);
-    json = await resp.json();
-  } catch (e) { status.textContent = "Network error — offline, or the request was blocked."; return; }
-  if (json.status === "error" || !json.values) {
-    status.textContent =
-      json.code === 401 ? "Twelve Data rejected the API key." :
-      json.code === 404 ? `Symbol ${t} not found on Twelve Data.` :
-      json.code === 429 ? "Rate limited (free plan allows 8 calls/min) — wait a minute and retry." :
-      `Twelve Data error: ${json.message || "unknown"}`;
-    return;
-  }
-  const s = parseTdSeries(json);
-  if (s.error) { status.textContent = s.error; return; }
-  installCustom(t, s);
-  const c = tdCache(); c.series[t] = s; tdSaveCache(c);
+  const err = await fetchCustom(t, key);
+  if (err) { status.textContent = err; return; }
+  const s = PV_DATA.series[t];
   const early = mIdx(s.end) < dataMax ? ` — note: data ends ${mLabel(mIdx(s.end))}` : "";
   status.textContent = `${t} added (${mLabel(mIdx(s.start))} – ${mLabel(mIdx(s.end))})${early}.`;
   $("tdTicker").value = "";
@@ -858,7 +864,11 @@ $("cfMode").onchange = () => {
 };
 $("cfMode").onchange();
 $("rebal").onchange = () => { $("rebalBand").style.display = $("rebal").value === "band" ? "" : "none"; };
-$("mcYears").onchange = () => LAST && drawMC(LAST);
+$("mcYears").onchange = () => {
+  if (!LAST) return;
+  drawMC(LAST);
+  history.replaceState(null, "", "#" + encodeState());
+};
 let LAST = null;
 
 function run() {
@@ -945,6 +955,83 @@ function run() {
   renderAnnualTable(LAST);
   $("results").style.display = "block";
   $("results").scrollIntoView({ behavior: "smooth" });
+  history.replaceState(null, "", "#" + encodeState());
+}
+
+// ----- shareable URLs: the whole form serializes into the location hash -----
+// (custom tickers by SYMBOL only — the API key never appears in a URL)
+function encodeState() {
+  const rows = [...$("allocBody").rows].map(tr => {
+    const t = tr.querySelector("select").value;
+    return t ? encodeURIComponent(t) + ":" + [...tr.querySelectorAll("input")].map(i => i.value).join(":") : null;
+  }).filter(Boolean);
+  const parts = [
+    "p=" + rows.join(","),
+    "s=" + $("startYr").value + "-" + $("startMo").value,
+    "e=" + $("endYr").value + "-" + $("endMo").value,
+    "i=" + $("initial").value,
+  ];
+  if ($("cfMode").value && +$("cfAmount").value)
+    parts.push("cf=" + $("cfMode").value + ":" + $("cfAmount").value + ":" + (+$("cfStep").value || 0));
+  if (+$("fee").value) parts.push("fee=" + $("fee").value);
+  parts.push("rb=" + ($("rebal").value === "band" ? "band:" + $("rebalBand").value : $("rebal").value));
+  if ($("bench").value !== "SPY") parts.push("b=" + encodeURIComponent($("bench").value));
+  if (+$("mcYears").value !== 30) parts.push("mc=" + $("mcYears").value);
+  const td = (groups[TD_GROUP] || []).map(([t]) => encodeURIComponent(t));
+  if (td.length) parts.push("td=" + td.join(","));
+  return parts.join("&");
+}
+
+async function applyHash() {
+  const h = location.hash.slice(1);
+  if (!h.includes("p=")) return;
+  const q = {};
+  h.split("&").forEach(kv => {
+    const i = kv.indexOf("=");
+    if (i > 0) q[kv.slice(0, i)] = kv.slice(i + 1);
+  });
+  if (q.td) {
+    const key = localStorage.getItem("pv_td_key") || "";
+    const missingKey = [];
+    for (const raw of q.td.split(",")) {
+      const t = decodeURIComponent(raw).toUpperCase();
+      if (PV_DATA.series[t]) continue;
+      if (!key) { missingKey.push(t); continue; }
+      const err = await fetchCustom(t, key);
+      if (err) $("customStatus").textContent = `${t}: ${err}`;
+    }
+    if (missingKey.length) {
+      $("customData").open = true;
+      $("customStatus").textContent =
+        `This link includes custom tickers (${missingKey.join(", ")}) — enter your Twelve Data key and re-open the link to load them.`;
+    }
+  }
+  if (q.p) {
+    $("allocBody").innerHTML = "";
+    q.p.split(",").forEach(row => {
+      const [t, ...ws] = row.split(":");
+      addRow(decodeURIComponent(t), [ws[0] ?? "", ws[1] ?? "", ws[2] ?? ""]);
+    });
+    addRow();
+    updateTotals();
+  }
+  if (q.s) { const [y, m] = q.s.split("-"); $("startYr").value = y; $("startMo").value = m; }
+  if (q.e) { const [y, m] = q.e.split("-"); $("endYr").value = y; $("endMo").value = m; }
+  if (q.i) $("initial").value = q.i;
+  if (q.cf) {
+    const [mo, amt, st] = q.cf.split(":");
+    $("cfMode").value = mo; $("cfAmount").value = amt || 0; $("cfStep").value = st || 0;
+  }
+  $("cfMode").onchange();
+  if (q.fee) $("fee").value = q.fee;
+  if (q.rb) {
+    if (q.rb.startsWith("band")) { $("rebal").value = "band"; $("rebalBand").value = q.rb.split(":")[1] || 5; }
+    else $("rebal").value = q.rb;
+  }
+  $("rebal").onchange();
+  $("bench").value = "b" in q ? decodeURIComponent(q.b) : "SPY";
+  if (q.mc) $("mcYears").value = q.mc;
+  run();
 }
 
 // ----- summary table -----
@@ -1444,6 +1531,8 @@ function renderAnnualTable({ runs }) {
   });
   $("annualTable").innerHTML = h + "</tbody>";
 }
+
+applyHash();
 </script>
 </body>
 </html>

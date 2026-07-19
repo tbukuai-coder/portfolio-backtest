@@ -9,6 +9,9 @@ or on GitHub Pages.
 ## Features
 
 - Up to **3 portfolios** side by side, plus a benchmark series
+- **Shareable URLs** — every run serializes the whole setup into the location
+  hash, so copying the address bar shares the exact backtest (custom tickers
+  by symbol only; your API key never appears in a URL)
 - Curated universe: US equity ETFs (incl. factor styles — small-cap value AVUV,
   dividend SCHD, momentum MTUM, quality QUAL), global/international (VT, VXUS,
   EFA, EEM, AVDV), bonds (US treasuries/credit plus EM bonds EMB

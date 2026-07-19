@@ -117,6 +117,16 @@ Node-evaluable.
   cell text keeps ≥4.5:1) and were validated with the dataviz palette script —
   re-validate if you change them. Exact numbers stay in every cell in ink
   tokens; color is never the only encoding.
+- Shareable URLs: `encodeState()` writes the whole form to the location hash
+  via `history.replaceState` after every successful `run()` (and on MC-horizon
+  change); `applyHash()` at boot repopulates and auto-runs. Hash grammar:
+  `p=TICKER:w1:w2:w3,…&s=YYYY-M&e=YYYY-M&i=…&cf=mode:amt:step&fee=…&
+  rb=N|band:X&b=BENCH&mc=YRS&td=SYM,…` — tickers URI-encoded (custom tickers
+  are user input), `b` omitted means the SPY default, `td` carries custom
+  tickers by symbol ONLY. The API key must never enter a URL. Custom tickers
+  in a hash auto-fetch when `pv_td_key` is stored; otherwise `#customStatus`
+  prompts and the run proceeds without them (weight totals then fail with a
+  plain message rather than silently reassigning weights).
 - Correlation matrix: `corrMatrix()` scopes to the distinct tickers in the
   current runs (constituents + benchmark) — never the whole 58-asset universe.
   The card hides for single-asset runs; ticker labels are HTML-escaped
