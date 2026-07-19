@@ -146,4 +146,16 @@ known-good history (run `node tests/sanity.js` before shipping any change).
 `CLAUDE.md` documents the architecture, hard rules, and conventions;
 `ROADMAP.md` tracks planned and shipped work.
 
+## Claude Code skill: `/backtest-review`
+
+The repo ships a [Claude Code](https://claude.com/claude-code) skill at
+`.claude/skills/backtest-review/` that turns Claude into a backtest reviewer.
+Clone the repo, open Claude Code in it, and paste a shared app URL
+(`…/portfolio-backtest/#p=…`) asking for a review — or invoke
+`/backtest-review` directly. The skill decodes the URL, reproduces the run
+headlessly through the app's own engine in Node (no packages needed), adds
+control portfolios (benchmark-only, each sleeve at 100%, the untilted core),
+runs robustness checks (endpoint trimming, inception clamps, partial years),
+and writes a verdict with a loadable link for any allocation it suggests.
+
 Educational tool — not investment advice.
