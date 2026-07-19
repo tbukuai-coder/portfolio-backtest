@@ -2,7 +2,9 @@ name: Monthly data refresh
 
 on:
   schedule:
-    - cron: "17 6 2 * *"   # 06:17 UTC on the 2nd of each month
+    - cron: "17 6 * * 1"   # 06:17 UTC every Monday — the commit guard below
+                           # only lands a commit when a new complete month
+                           # appears, so weekly runs are retries, not churn
   workflow_dispatch:
 
 permissions:
@@ -38,16 +40,18 @@ jobs:
       - name: Sanity gate
         run: node tests/sanity.js
 
-      - name: Commit & push if changed
+      - name: Commit & push if a new complete month landed
         run: |
-          if git diff --quiet data.js; then
-            echo "data.js unchanged — nothing to commit"
+          new_end=$(grep -o '"end":"[0-9-]*"' data.js | head -1 | cut -d'"' -f4)
+          old_end=$(git show HEAD:data.js | grep -o '"end":"[0-9-]*"' | head -1 | cut -d'"' -f4)
+          if [ "$new_end" = "$old_end" ]; then
+            echo "data still ends $old_end — no new complete month, skipping commit"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.js
-          git commit -m "Auto-refresh data through $(date -u -d 'last month' +%Y-%m)"
+          git commit -m "Auto-refresh data through $new_end"
           git push
 
       - name: Open issue on failure
