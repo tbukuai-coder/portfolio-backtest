@@ -19,7 +19,10 @@ import yfinance as yf
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data.js"
 
-# ticker -> (display name, group)
+# key -> (display name, group) for assets whose key IS the Yahoo ticker, or
+# key -> (display name, group, yahoo ticker, fx pair) for listings quoted in a
+# foreign currency: closes are multiplied by the FX rate month by month, so the
+# embedded returns are USD total returns (local return x currency return).
 UNIVERSE = {
     "SPY":     ("SPDR S&P 500",              "US Equity"),
     "QQQ":     ("Invesco Nasdaq 100",         "US Equity"),
@@ -51,6 +54,12 @@ UNIVERSE = {
     "META":    ("Meta Platforms",             "Stocks"),
     "TSLA":    ("Tesla",                      "Stocks"),
     "BRK-B":   ("Berkshire Hathaway B",       "Stocks"),
+    "EWM":     ("iShares MSCI Malaysia",      "Malaysia"),
+    "MAYBANK": ("Maybank (USD)",              "Malaysia", "1155.KL", "MYRUSD=X"),
+    "PBBANK":  ("Public Bank (USD)",          "Malaysia", "1295.KL", "MYRUSD=X"),
+    "CIMB":    ("CIMB Group (USD)",           "Malaysia", "1023.KL", "MYRUSD=X"),
+    "TENAGA":  ("Tenaga Nasional (USD)",      "Malaysia", "5347.KL", "MYRUSD=X"),
+    "GENTING": ("Genting (USD)",              "Malaysia", "3182.KL", "MYRUSD=X"),
 }
 
 
@@ -59,22 +68,33 @@ def month_key(ts):
 
 
 def fetch_returns():
-    tickers = list(UNIVERSE)
-    px = yf.download(tickers, interval="1mo", period="max",
+    yahoo = set()
+    for key, spec in UNIVERSE.items():
+        yahoo.add(spec[2] if len(spec) > 2 else key)
+        if len(spec) > 3:
+            yahoo.add(spec[3])
+    px = yf.download(sorted(yahoo), interval="1mo", period="max",
                      auto_adjust=True, progress=False)["Close"]
     # drop the in-progress current month
     today = dt.date.today()
     px = px[px.index < dt.datetime(today.year, today.month, 1)]
-    rets = px.pct_change()
+    end_m = px.index[-1].year * 12 + px.index[-1].month
 
     series = {}
-    for t in tickers:
-        s = rets[t].dropna()
+    for key, spec in UNIVERSE.items():
+        name, group = spec[0], spec[1]
+        p = px[spec[2] if len(spec) > 2 else key]
+        if len(spec) > 3:
+            p = p * px[spec[3]]
+        s = p.pct_change().dropna()
         if s.empty:
-            print(f"WARN: no data for {t}", file=sys.stderr)
+            print(f"WARN: no data for {key}", file=sys.stderr)
             continue
-        name, group = UNIVERSE[t]
-        series[t] = {
+        # an interior gap would shift every later month one slot after dropna
+        span = end_m - (s.index[0].year * 12 + s.index[0].month) + 1
+        if len(s) != span:
+            sys.exit(f"ERROR: {key} has interior gaps ({len(s)} rows over {span} months)")
+        series[key] = {
             "name": name,
             "group": group,
             "start": month_key(s.index[0]),

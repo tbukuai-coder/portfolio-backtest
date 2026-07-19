@@ -61,6 +61,12 @@ Node-evaluable.
   are added at month-end at target weights.
 - CASHX is derived from ^IRX (13-week T-bill): monthly rf =
   `(1 + yield/100)^(1/12) − 1`. It doubles as the Sharpe/Sortino risk-free leg.
+- Foreign listings (Malaysia group) use 4-tuple `UNIVERSE` entries
+  `(name, group, yahoo ticker, fx pair)`: closes × FX rate month by month, so
+  embedded returns are USD total returns. Prefer liquid home-exchange listings
+  over US OTC ADRs — the ADR tapes are full of stale-quote garbage prints.
+  `refresh_data.py` hard-fails if any series has an interior month gap
+  (a gap would shift every later return one slot after `dropna`).
 - Chart colors are the dataviz-skill validated palette: `--s1..--s4` =
   Portfolio 1/2/3 + benchmark, defined once in `:root` with dark-mode overrides
   under both `prefers-color-scheme` and `[data-theme]` scopes. The light-mode

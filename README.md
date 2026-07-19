@@ -2,7 +2,7 @@
 
 A static HTML homage to [Portfolio Visualizer's Backtest Portfolio](https://www.portfoliovisualizer.com/backtest-portfolio).
 Zero dependencies, no build step, no server calls — monthly total-return data for a
-31-asset universe ships alongside the page in `data.js` (loaded via a plain
+37-asset universe ships alongside the page in `data.js` (loaded via a plain
 `<script src>`, not `fetch`), so the page still works offline, from `file://`,
 or on GitHub Pages.
 
@@ -10,7 +10,9 @@ or on GitHub Pages.
 
 - Up to **3 portfolios** side by side, plus a benchmark series
 - Curated universe: US equity ETFs, international, bonds, gold/commodities/REITs/crypto,
-  8 mega-cap stocks, and cash (3-month T-bill)
+  8 mega-cap stocks, a Malaysia group (iShares MSCI Malaysia plus five Bursa
+  blue chips — Maybank, Public Bank, CIMB, Tenaga, Genting — converted to USD),
+  and cash (3-month T-bill)
 - Start/end month, initial amount, **monthly contributions**, rebalancing
   (monthly / quarterly / semi-annual / annual / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
@@ -37,7 +39,12 @@ python3 refresh_data.py
 ```
 
 To change the universe, edit the `UNIVERSE` dict at the top of `refresh_data.py`
-and re-run. The in-progress current month is always dropped.
+and re-run. The in-progress current month is always dropped. Foreign listings
+(the Malaysia group) carry a Yahoo ticker and an FX pair in their entry: closes
+are multiplied by the FX rate month by month, so the embedded returns are USD
+total returns — local return × currency return. (The Bursa listings are used
+instead of the US OTC ADRs because the ADR price history is full of
+stale-quote artifacts.)
 
 ## Custom tickers (optional)
 

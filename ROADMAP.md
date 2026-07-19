@@ -91,10 +91,18 @@ changes proven in Node before shipping.
       backtests could start in the 1980s instead of clamping to the youngest
       ETF. Needs a per-asset `proxy` field in `UNIVERSE` and a splice-date
       note in the UI.
-- [ ] **Universe expansion** — factor ETFs (VTV/VUG/MTUM/QUAL), TIPS (TIP),
-      EM bonds, a few more mega-caps. Cheap to add, but each new asset grows
-      `data.js`; keep the curated feel rather than becoming a ticker
-      search box (which would break the no-server-calls rule anyway).
+- [x] **Malaysia group** — added 2026-07-19: EWM (index proxy) + Maybank,
+      Public Bank, CIMB, Tenaga, Genting. Bursa `.KL` listings converted to
+      USD via `MYRUSD=X` at refresh time (`UNIVERSE` entries now take an
+      optional Yahoo ticker + FX pair) — the US OTC ADRs were rejected for
+      stale-quote garbage prints (TNABY: −89% then +590%). `refresh_data.py`
+      now hard-fails on interior month gaps so a spotty series can never
+      silently misalign.
+- [ ] **Universe expansion** — factor ETFs (MTUM/QUAL), EM bonds, a few
+      more mega-caps or another country group via the FX-conversion
+      mechanism. Cheap to add, but each new asset grows `data.js`; keep
+      the curated feel rather than becoming a ticker search box (which
+      would break the no-server-calls rule anyway).
 - [ ] **Automated monthly refresh** — a scheduled GitHub Action that runs
       `refresh_data.py`, re-runs the Node engine sanity check, and commits
       the regenerated `data.js`. Removes the manual refresh chore; the
