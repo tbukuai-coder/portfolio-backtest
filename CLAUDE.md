@@ -33,16 +33,20 @@ Node-evaluable.
   publishes the data). Foreign listings additionally need the 4-tuple + the
   identity/gap/garbage-print probes (see Conventions).
 - **Engine or data changes must pass `node tests/sanity.js` before shipping**
-  (78 assertions; it evals `data.js` + the engine block, replacing
-  `const PV_DATA` with `var` first — `const` inside `eval` doesn't escape to
-  the caller's scope). Extend it when you add a metric or an asset. Known-good
-  anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max drawdown ≈ −50.8%
-  (trough Feb 2009), longest underwater 75 mo from Aug 2000 (dot-com beat the
-  GFC), worst rolling 10y ≈ −3.5%/yr, Ulcer ≈ 14%; All Weather's worst year is
-  2022; SPY-vs-SPY benchmark stats are exact identities (beta 1, alpha 0,
-  R² 1, TE 0, IR NaN); MAYBANK (USD) from 2004 → CAGR ≈ 7.9%. Contributions
-  must leave the TWR series unchanged for a single-asset portfolio (up to ~1e-15
-  float noise — compare with a tolerance, not stringify).
+  (154 assertions at last count; it evals `data.js` + the engine block,
+  replacing `const PV_DATA` with `var` first — `const` inside `eval` doesn't
+  escape to the caller's scope). Extend it when you add a metric or an asset.
+  Known-good anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max
+  drawdown ≈ −50.8% (trough Feb 2009), longest underwater 75 mo from Aug 2000
+  (dot-com beat the GFC), worst rolling 10y ≈ −3.5%/yr, Ulcer ≈ 14%; All
+  Weather's worst year is 2022; SPY-vs-SPY benchmark stats are exact identities
+  (beta 1, alpha 0, R² 1, TE 0, IR NaN); MAYBANK (USD) from 2004 → CAGR ≈ 7.9%.
+  Invariance identities are asserted exactly: contributions leave single-asset
+  TWR unchanged, pro-rata withdrawals leave even multi-asset TWR unchanged,
+  band ~0 ≡ monthly and band ∞ ≡ never, fee 0 is a no-op and net twr =
+  (1+gross)(1−fee/12)−1 per month, Monte Carlo reproduces byte-identical bands
+  from the same seed (compare with tolerances, not stringify, wherever float
+  noise ~1e-15 applies).
 - **Render-check both themes.** No build/lint exists; verification is headless
   Chromium via Python playwright (installed in this studio): load the page over
   `file://`, click `#exampleBtn` then `#runBtn`, screenshot with
@@ -75,10 +79,13 @@ Node-evaluable.
   zero balances to the smallest positive value.
 - CASHX is derived from ^IRX (13-week T-bill): monthly rf =
   `(1 + yield/100)^(1/12) − 1`. It doubles as the Sharpe/Sortino risk-free leg.
-- Foreign listings (Malaysia group) use 4-tuple `UNIVERSE` entries
-  `(name, group, yahoo ticker, fx pair)`: closes × FX rate month by month, so
-  embedded returns are USD total returns. Prefer liquid home-exchange listings
-  over US OTC ADRs — the ADR tapes are full of stale-quote garbage prints.
+- Foreign listings (Malaysia and Singapore groups) use 4-tuple `UNIVERSE`
+  entries `(name, group, yahoo ticker, fx pair)`: closes × FX rate month by
+  month, so embedded returns are USD total returns. Prefer liquid
+  home-exchange listings over US OTC ADRs — the ADR tapes are full of
+  stale-quote garbage prints — and verify ticker identity empirically
+  (yfinance metadata can be empty; a price-level fingerprint works, and
+  "TLKMF" turned out to be Telkom Indonesia, not Telekom Malaysia).
   `refresh_data.py` hard-fails if any series has an interior month gap
   (a gap would shift every later return one slot after `dropna`).
 - Chart colors are the dataviz-skill validated palette: `--s1..--s4` =
@@ -110,6 +117,18 @@ Node-evaluable.
   cell text keeps ≥4.5:1) and were validated with the dataviz palette script —
   re-validate if you change them. Exact numbers stay in every cell in ink
   tokens; color is never the only encoding.
+- Correlation matrix: `corrMatrix()` scopes to the distinct tickers in the
+  current runs (constituents + benchmark) — never the whole 58-asset universe.
+  The card hides for single-asset runs; ticker labels are HTML-escaped
+  (custom tickers are user input); zero-variance legs render "—".
+- Monte Carlo: `monteCarlo(hist, startBal, months, cashflow, paths, seed)` —
+  1,000 paths, seed 42, 12-month block bootstrap of the selected run's
+  net-of-fee `sim.twr`, starting from the backtest's FINAL balance with the
+  current cashflow settings (step-up restarts at projection year 1). Keep it
+  deterministic — the seed is what keeps `tests/sanity.js` assertable. The
+  survival note renders only for fixed withdrawals ($ mode); the card warns
+  when history < 120 months (a short bull sample projects fantasy fans —
+  a 2022-start window projected $33M medians during testing).
 - Custom tickers (opt-in Twelve Data fetch — see `DATA-API-PLAN.md` for why
   that provider): fetched series are merged into the **in-memory**
   `PV_DATA.series` only — `data.js` stays untouched — under group
@@ -119,8 +138,12 @@ Node-evaluable.
   (series cache, auto-invalidated when `PV_DATA.end` advances). Parsing keeps
   the longest trailing contiguous month run ≤ `PV_DATA.end`, which also drops
   the in-progress month. Chip/status DOM is built with `textContent`, not
-  innerHTML — ticker strings are user input. Playwright tests stub
-  `api.twelvedata.com` via `page.route()`; no key needed to verify.
+  innerHTML — ticker strings are user input. Embedded data always wins over
+  custom: the add path rejects a ticker that exists in `PV_DATA.series`, and
+  cache restore skips one that has since been embedded (the stale cache entry
+  lingers harmlessly). Playwright tests stub `api.twelvedata.com` via
+  `page.route()`; no key needed to verify (compatibility re-verified
+  end-to-end 2026-07-19 after the data.js split and all new analytics).
 
 ## Deploy
 
@@ -128,8 +151,8 @@ Own git repo → github.com/tbukuai-coder/portfolio-backtest, served by GitHub
 Pages from main branch root (legacy build — a push to main is the deploy).
 Data refresh is automated: `.github/workflows/refresh-data.yml` runs weekly
 after the US Friday close (01:17 UTC Saturday; also manual dispatch), gates on
-`tests/sanity.js`, and commits `data.js`
-only when a new complete month landed (weekly runs are retry resilience, not
+`tests/sanity.js`, and commits `data.js` only when a new complete month landed
+or the universe composition changed (weekly runs are retry resilience, not
 commit churn); it opens an issue on failure. The same cycle works manually:
 `python3 refresh_data.py`, `node tests/sanity.js`, commit `data.js`, push.
 Pull before local work — the Action pushes to main.
