@@ -21,6 +21,9 @@
   --s4: #eda100;  /* Benchmark   */
   --good: #006300;
   --bad:  #d03b3b;
+  --hm-pos: #3987e5;  /* diverging poles + midpoint (dataviz-validated blue<->red) */
+  --hm-neg: #e34948;
+  --hm-mid: #f0efec;
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -39,6 +42,9 @@
     --s4: #c98500;
     --good: #0ca30c;
     --bad:  #d03b3b;
+    --hm-pos: #256abf;
+    --hm-neg: #d03b3b;
+    --hm-mid: #383835;
   }
 }
 :root[data-theme="dark"] {
@@ -57,6 +63,9 @@
   --s4: #c98500;
   --good: #0ca30c;
   --bad:  #d03b3b;
+  --hm-pos: #256abf;
+  --hm-neg: #d03b3b;
+  --hm-mid: #383835;
 }
 
 * { box-sizing: border-box; }
@@ -165,9 +174,13 @@ details.custom a { color: inherit; }
 .tooltip .val { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
 
 .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.seg { display: inline-flex; gap: 6px; }
+.seg { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .seg button { padding: 4px 12px; font-size: 13px; }
 .seg button.active { border-color: var(--ink-2); color: var(--ink); font-weight: 600; }
+.seg .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.heatmap td, .heatmap th { text-align: right; font-variant-numeric: tabular-nums; padding: 5px 7px; font-size: 12px; }
+.heatmap th:first-child, .heatmap td:first-child { text-align: left; }
+.heatmap td.hm { color: var(--ink); border: 2px solid var(--surface); }
 .chart-head label { font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
 
 .pos { color: var(--good); }
@@ -277,6 +290,14 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="legend" id="rollLegend"></div>
       <div class="chartbox" id="rollChart"></div>
       <div class="scrollx"><table id="rollTable"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-head">
+        <h2>Monthly returns <span class="note">(%)</span></h2>
+        <span class="seg" id="hmPorts"></span>
+      </div>
+      <div class="scrollx"><table id="hmTable" class="heatmap"></table></div>
     </div>
 
     <div class="card">
@@ -748,6 +769,7 @@ function run() {
   drawAnnual(LAST);
   drawDrawdowns(LAST);
   drawRolling(LAST);
+  renderHeatmap(LAST);
   renderAnnualTable(LAST);
   $("results").style.display = "block";
   $("results").scrollIntoView({ behavior: "smooth" });
@@ -1103,6 +1125,42 @@ function drawRolling({ runs, startM, endM }) {
     h += `<tr><td>${x.label} worst</td>` + stat.map(t => `<td>${sgn(t.s[t.wi])} ${end(t.wi)}</td>`).join("") + "</tr>";
   });
   $("rollTable").innerHTML = h + "</tbody>";
+}
+
+// ----- monthly returns heatmap -----
+let hmIdx = 0;
+
+function renderHeatmap({ runs, startM }) {
+  if (hmIdx >= runs.length) hmIdx = 0;
+  $("hmPorts").innerHTML = runs.map((r, i) =>
+    `<button class="${i === hmIdx ? "active" : ""}" data-i="${i}"><span class="dot" style="background:${r.color}"></span>${r.label}</button>`).join("");
+  $("hmPorts").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { hmIdx = +b.dataset.i; renderHeatmap(LAST); });
+
+  const r = runs[hmIdx];
+  const CAP = 0.08;   // +-8%/mo saturates the ramp; the number in the cell is exact
+  const cell = v => {
+    if (v === null) return "<td></td>";
+    const pct = Math.round(Math.min(1, Math.abs(v) / CAP) * 100);
+    return `<td class="hm" style="background:color-mix(in oklab, var(${v >= 0 ? "--hm-pos" : "--hm-neg"}) ${pct}%, var(--hm-mid))">${(v * 100).toFixed(1)}</td>`;
+  };
+
+  const byYear = new Map();
+  r.sim.twr.forEach((v, i) => {
+    const m = startM + i, y = Math.floor(m / 12);
+    if (!byYear.has(y)) byYear.set(y, Array(12).fill(null));
+    byYear.get(y)[m % 12] = v;
+  });
+  const totals = Object.fromEntries(r.stats.yearRets.map(o => [o.y, o.r]));
+
+  const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let h = "<thead><tr><th>Year</th>" + MO.map(m => `<th>${m}</th>`).join("") + "<th>Total</th></tr></thead><tbody>";
+  [...byYear.keys()].sort((a, b) => b - a).forEach(y => {
+    const t = totals[y];
+    h += `<tr><td>${y}</td>` + byYear.get(y).map(cell).join("") +
+         `<td><span class="${t >= 0 ? "pos" : "neg"}">${fmtPct(t)}</span></td></tr>`;
+  });
+  $("hmTable").innerHTML = h + "</tbody>";
 }
 
 // ----- annual table -----

@@ -47,11 +47,12 @@ changes proven in Node before shipping.
       available) and a best/worst/average table across every available
       window with window-end months. Node anchors: constant 1%/mo →
       12.68% everywhere; SPY worst 10y −3.45%/yr (lost decade), best 16.5%.
-- [ ] **Monthly returns heatmap** — year × month table, one portfolio at a
-      time behind a selector (stacking four heatmaps is too tall). Monthly
-      returns are signed data: use a diverging ramp centered at zero (not
-      sequential — that would shade −8% and +8% equally), and keep numbers
-      in the cells — color alone is sub-contrast.
+- [x] **Monthly returns heatmap** — built 2026-07-19: year × month table
+      with a Total column, one portfolio at a time behind a segmented
+      selector. Diverging blue↔red fill (poles validated with the dataviz
+      script in both modes, CVD ΔE 20+) via `color-mix` on `--hm-pos/neg/mid`
+      theme vars, saturating at ±8%/mo; exact numbers stay in every cell in
+      ink tokens.
 
 ## Simulation features
 
