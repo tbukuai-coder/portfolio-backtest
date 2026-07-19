@@ -21,8 +21,8 @@ run before building and eliminated both original candidates:
 Implementation lives in the app block of `index.html` ("custom tickers"
 section): endpoint `time_series?symbol=&interval=1month&outputsize=5000&
 adjust=all`, longest-trailing-contiguous-run parsing trimmed to complete
-months ≤ `PV_DATA.end`, in-memory merge into `PV_DATA.series` (file's data
-block untouched), localStorage key `pv_td_key` + cache `pv_td_cache`
+months ≤ `PV_DATA.end`, in-memory merge into `PV_DATA.series` (the on-disk
+data — now `data.js` — untouched), localStorage key `pv_td_key` + cache `pv_td_cache`
 (invalidated when `PV_DATA.end` advances), per-series `end` field with an
 end-clamp in `run()`. Verified: Node engine anchors + headless Chromium in
 both themes with stubbed fetch (add/backtest/cache-restore/404/remove paths).

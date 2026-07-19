@@ -1,9 +1,10 @@
 # Backtest Portfolio
 
-A single-file HTML homage to [Portfolio Visualizer's Backtest Portfolio](https://www.portfoliovisualizer.com/backtest-portfolio).
+A static HTML homage to [Portfolio Visualizer's Backtest Portfolio](https://www.portfoliovisualizer.com/backtest-portfolio).
 Zero dependencies, no build step, no server calls — monthly total-return data for a
-31-asset universe is embedded directly in `index.html`, so the page works offline,
-from `file://`, or on GitHub Pages.
+31-asset universe ships alongside the page in `data.js` (loaded via a plain
+`<script src>`, not `fetch`), so the page still works offline, from `file://`,
+or on GitHub Pages.
 
 ## Features
 
@@ -23,8 +24,9 @@ from `file://`, or on GitHub Pages.
 
 ## Refreshing the data
 
-Prices come from yfinance (monthly, auto-adjusted = dividends reinvested), spliced
-into `index.html` between the `/*==DATA-START==*/` … `/*==DATA-END==*/` markers:
+Prices come from yfinance (monthly, auto-adjusted = dividends reinvested), written
+to `data.js` as a `const PV_DATA = …` assignment between `/*==DATA-START==*/` …
+`/*==DATA-END==*/` markers:
 
 ```bash
 python3 refresh_data.py

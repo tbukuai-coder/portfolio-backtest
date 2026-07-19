@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Regenerate the embedded price dataset inside index.html.
+"""Regenerate the price dataset in data.js.
 
 Downloads max-history monthly auto-adjusted closes (dividends reinvested) for a
-curated universe via yfinance, converts to monthly returns, and splices the JSON
-blob into index.html between the /*==DATA-START==*/ and /*==DATA-END==*/ markers.
+curated universe via yfinance, converts to monthly returns, and writes data.js
+(a `const PV_DATA = {...}` assignment wrapped in /*==DATA-START==*/ and
+/*==DATA-END==*/ markers), which index.html loads via <script src="data.js">.
 
 Usage:  python3 refresh_data.py
 """
 
 import datetime as dt
 import json
-import re
 import sys
 from pathlib import Path
 
 import yfinance as yf
 
 HERE = Path(__file__).resolve().parent
-HTML = HERE / "index.html"
+DATA = HERE / "data.js"
 
 # ticker -> (display name, group)
 UNIVERSE = {
@@ -108,17 +108,11 @@ def main():
     }
     blob = json.dumps(payload, separators=(",", ":"))
 
-    html = HTML.read_text()
-    new = re.sub(
-        r"(/\*==DATA-START==\*/).*?(/\*==DATA-END==\*/)",
-        lambda m: m.group(1) + "\nconst PV_DATA = " + blob + ";\n" + m.group(2),
-        html, flags=re.S)
-    if new == html:
-        sys.exit("ERROR: data markers not found or unchanged in index.html")
-    HTML.write_text(new)
+    DATA.write_text("/*==DATA-START==*/\nconst PV_DATA = " + blob
+                    + ";\n/*==DATA-END==*/\n")
     n = len(series)
-    print(f"Embedded {n} series through {last_month} "
-          f"({len(blob) // 1024} KB) into {HTML.name}")
+    print(f"Wrote {n} series through {last_month} "
+          f"({len(blob) // 1024} KB) to {DATA.name}")
 
 
 if __name__ == "__main__":

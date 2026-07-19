@@ -6,30 +6,35 @@ See `ROADMAP.md` for planned work.
 
 ## Architecture in one paragraph
 
-`index.html` is the entire app. It contains three `<script>` blocks: the **data
-block** (between `/*==DATA-START==*/` and `/*==DATA-END==*/`), the **engine
-block** (pure functions between `/*==ENGINE-START==*/` and `/*==ENGINE-END==*/` —
-month arithmetic, `simulate()`, `computeStats()`), and the **app block** (DOM,
-form handling, SVG chart rendering). The marker comments are load-bearing:
-`refresh_data.py` regex-splices new data between the DATA markers, and the
-engine tests eval the ENGINE block in Node. Don't rename or remove them, and
-keep the engine block free of DOM references so it stays Node-evaluable.
+The app is two files. `data.js` is the **data block**: a single
+`const PV_DATA = {...}` assignment between `/*==DATA-START==*/` and
+`/*==DATA-END==*/` markers, generated wholesale by `refresh_data.py` and loaded
+by `index.html` via a plain `<script src="data.js">` (NOT `fetch` — a classic
+script tag works from `file://`, `fetch` does not; that's what keeps the page
+serverless). `index.html` holds everything else in two `<script>` blocks: the
+**engine block** (pure functions between `/*==ENGINE-START==*/` and
+`/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()`) and the
+**app block** (DOM, form handling, SVG chart rendering). The marker comments are
+load-bearing: the engine tests eval both blocks in Node. Don't rename or remove
+them, and keep the engine block free of DOM references so it stays
+Node-evaluable.
 
 ## Hard rules
 
-- **Never edit the data block by hand.** Regenerate it with
+- **Never edit `data.js` by hand.** Regenerate it with
   `python3 refresh_data.py` (edit the `UNIVERSE` dict there to change assets).
   The script drops the in-progress current month — keep that; a partial month
   poisons every stat downstream.
-- **Engine changes must be sanity-tested in Node before shipping.** Extract and
-  eval the blocks (replace `const PV_DATA` with `var PV_DATA` first — `const`
-  inside `eval` doesn't escape to the caller's scope):
+- **Engine changes must be sanity-tested in Node before shipping.** Eval
+  `data.js` and the engine block (replace `const PV_DATA` with `var PV_DATA`
+  first — `const` inside `eval` doesn't escape to the caller's scope):
 
   ```bash
   node -e '
-  const html = require("fs").readFileSync("index.html","utf8");
+  const fs = require("fs");
+  const html = fs.readFileSync("index.html","utf8");
   const grab = (a,b) => html.split(a)[1].split(b)[0];
-  eval(grab("/*==DATA-START==*/","/*==DATA-END==*/").replace("const PV_DATA","var PV_DATA"));
+  eval(fs.readFileSync("data.js","utf8").replace("const PV_DATA","var PV_DATA"));
   eval(grab("/*==ENGINE-START==*/","/*==ENGINE-END==*/"));
   // ... assertions here'
   ```
@@ -69,7 +74,7 @@ keep the engine block free of DOM references so it stays Node-evaluable.
   separate benchmark series is added.
 - Custom tickers (opt-in Twelve Data fetch — see `DATA-API-PLAN.md` for why
   that provider): fetched series are merged into the **in-memory**
-  `PV_DATA.series` only — the file's data block stays untouched — under group
+  `PV_DATA.series` only — `data.js` stays untouched — under group
   "Custom (Twelve Data)", with an extra `end` field ("YYYY-MM") that `run()`
   clamps to (embedded series have no `end`; they all run to `PV_DATA.end`).
   localStorage: `pv_td_key` (API key — never put it in URLs) and `pv_td_cache`
@@ -84,4 +89,4 @@ keep the engine block free of DOM references so it stays Node-evaluable.
 Own git repo → github.com/tbukuai-coder/portfolio-backtest, served by GitHub
 Pages from main branch root (legacy build — a push to main is the deploy).
 Data refresh cycle: `python3 refresh_data.py`, re-run the Node sanity check,
-commit the regenerated `index.html`, push.
+commit the regenerated `data.js`, push.
