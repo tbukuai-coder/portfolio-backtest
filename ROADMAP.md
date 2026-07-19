@@ -92,7 +92,8 @@ changes proven in Node before shipping.
       ETF. Needs a per-asset `proxy` field in `UNIVERSE` and a splice-date
       note in the UI.
 - [x] **Malaysia group** — added 2026-07-19: EWM (index proxy) + Maybank,
-      Public Bank, CIMB, Tenaga, Genting. Bursa `.KL` listings converted to
+      Public Bank, CIMB, RHB Bank, Tenaga, IHH Healthcare, Sunway (Genting
+      was briefly included, swapped out same day). Bursa `.KL` listings converted to
       USD via `MYRUSD=X` at refresh time (`UNIVERSE` entries now take an
       optional Yahoo ticker + FX pair) — the US OTC ADRs were rejected for
       stale-quote garbage prints (TNABY: −89% then +590%). `refresh_data.py`

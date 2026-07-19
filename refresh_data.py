@@ -62,7 +62,9 @@ UNIVERSE = {
     "PBBANK":  ("Public Bank (USD)",          "Malaysia", "1295.KL", "MYRUSD=X"),
     "CIMB":    ("CIMB Group (USD)",           "Malaysia", "1023.KL", "MYRUSD=X"),
     "TENAGA":  ("Tenaga Nasional (USD)",      "Malaysia", "5347.KL", "MYRUSD=X"),
-    "GENTING": ("Genting (USD)",              "Malaysia", "3182.KL", "MYRUSD=X"),
+    "RHBBANK": ("RHB Bank (USD)",             "Malaysia", "1066.KL", "MYRUSD=X"),
+    "IHH":     ("IHH Healthcare (USD)",       "Malaysia", "5225.KL", "MYRUSD=X"),
+    "SUNWAY":  ("Sunway (USD)",               "Malaysia", "5211.KL", "MYRUSD=X"),
 }
 
 

@@ -101,14 +101,14 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(endM <= prevM && endM >= prevM - 1,
          "data end " + PV_DATA.end + " within a month of current (prev complete = " + mKey(prevM) + ")");
 }
-assert(Object.keys(PV_DATA.series).length === 40, "40 series embedded");
+assert(Object.keys(PV_DATA.series).length === 42, "42 series embedded");
 assert(PV_DATA.series.VT?.group === "International" && PV_DATA.series.VT.start === "2008-07", "VT embedded from 2008-07");
 assert(PV_DATA.series.AVUV?.group === "US Equity" && PV_DATA.series.AVUV.start === "2019-10", "AVUV embedded from 2019-10");
 assert(PV_DATA.series.AVDV?.group === "International" && PV_DATA.series.AVDV.start === "2019-10", "AVDV embedded from 2019-10");
 
 // Malaysia group: USD-converted Bursa listings + EWM
 {
-  const my = ["EWM", "MAYBANK", "PBBANK", "CIMB", "TENAGA", "GENTING"];
+  const my = ["EWM", "MAYBANK", "PBBANK", "CIMB", "TENAGA", "RHBBANK", "IHH", "SUNWAY"];
   my.forEach(t => assert(PV_DATA.series[t]?.group === "Malaysia", t + " in Malaysia group"));
   assert(PV_DATA.series.MAYBANK.start === "2004-01", "MAYBANK starts 2004-01 (FX history limit)");
   my.filter(t => t !== "EWM").forEach(t => {
