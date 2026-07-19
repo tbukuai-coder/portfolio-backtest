@@ -25,7 +25,12 @@ Node-evaluable.
 - **Never edit `data.js` by hand.** Regenerate it with
   `python3 refresh_data.py` (edit the `UNIVERSE` dict there to change assets).
   The script drops the in-progress current month — keep that; a partial month
-  poisons every stat downstream.
+  poisons every stat downstream. Adding a US-listed ticker is ONE line in
+  `UNIVERSE` — `tests/sanity.js` parses the dict so the series count
+  self-syncs, and the Action commits on universe changes as well as new
+  months (so pushing just the `UNIVERSE` edit is enough; the next weekly run
+  publishes the data). Foreign listings additionally need the 4-tuple + the
+  identity/gap/garbage-print probes (see Conventions).
 - **Engine or data changes must pass `node tests/sanity.js` before shipping**
   (78 assertions; it evals `data.js` + the engine block, replacing
   `const PV_DATA` with `var` first — `const` inside `eval` doesn't escape to

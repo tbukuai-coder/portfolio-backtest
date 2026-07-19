@@ -43,12 +43,14 @@ jobs:
       - name: Sanity gate
         run: node tests/sanity.js
 
-      - name: Commit & push if a new complete month landed
+      - name: Commit & push if a new month landed or the universe changed
         run: |
           new_end=$(grep -o '"end":"[0-9-]*"' data.js | head -1 | cut -d'"' -f4)
           old_end=$(git show HEAD:data.js | grep -o '"end":"[0-9-]*"' | head -1 | cut -d'"' -f4)
-          if [ "$new_end" = "$old_end" ]; then
-            echo "data still ends $old_end — no new complete month, skipping commit"
+          new_n=$(grep -o '"name":' data.js | wc -l)
+          old_n=$(git show HEAD:data.js | grep -o '"name":' | wc -l)
+          if [ "$new_end" = "$old_end" ] && [ "$new_n" = "$old_n" ]; then
+            echo "data still ends $old_end with $old_n series — nothing new, skipping commit"
             exit 0
           fi
           git config user.name "github-actions[bot]"

@@ -101,7 +101,18 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(endM <= prevM && endM >= prevM - 1,
          "data end " + PV_DATA.end + " within a month of current (prev complete = " + mKey(prevM) + ")");
 }
-assert(Object.keys(PV_DATA.series).length === 42, "42 series embedded");
+// the expected universe is parsed from refresh_data.py, so adding a ticker
+// there is the only edit needed — this stays in sync automatically while
+// still catching silently-dropped series (in UNIVERSE but absent from data)
+{
+  const py = fs.readFileSync("refresh_data.py", "utf8");
+  const uni = [...py.matchAll(/^\s*"([A-Z0-9.=-]+)":\s*\(/gm)].map(m => m[1]);
+  assert(uni.length >= 30, "parsed UNIVERSE from refresh_data.py (" + uni.length + " entries)");
+  const missing = uni.filter(t => !PV_DATA.series[t]);
+  assert(missing.length === 0, "every UNIVERSE ticker embedded" + (missing.length ? " — MISSING: " + missing : ""));
+  assert(Object.keys(PV_DATA.series).length === uni.length + 1,
+         (uni.length + 1) + " series embedded (UNIVERSE + CASHX)");
+}
 assert(PV_DATA.series.VT?.group === "International" && PV_DATA.series.VT.start === "2008-07", "VT embedded from 2008-07");
 assert(PV_DATA.series.AVUV?.group === "US Equity" && PV_DATA.series.AVUV.start === "2019-10", "AVUV embedded from 2019-10");
 assert(PV_DATA.series.AVDV?.group === "International" && PV_DATA.series.AVDV.start === "2019-10", "AVDV embedded from 2019-10");
