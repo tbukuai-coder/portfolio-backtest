@@ -43,22 +43,28 @@ or on GitHub Pages.
   history with your own free [Twelve Data](https://twelvedata.com/pricing) API
   key — see below
 
-## Refreshing the data
+## Data
 
 Prices come from yfinance (monthly, auto-adjusted = dividends reinvested), written
 to `data.js` as a `const PV_DATA = …` assignment between `/*==DATA-START==*/` …
-`/*==DATA-END==*/` markers:
+`/*==DATA-END==*/` markers. **Refreshes are automated**: a GitHub Action runs
+weekly after the US Friday close, re-fetches everything, gates the result on the
+`tests/sanity.js` assertion suite, and commits `data.js` only when a new complete
+month has landed (or the universe changed) — so the live page updates itself a
+day or two after each month-end, and a failed refresh opens an issue instead of
+publishing bad data. The same cycle works manually:
 
 ```bash
-python3 refresh_data.py
+python3 refresh_data.py && node tests/sanity.js
 ```
 
-To change the universe, edit the `UNIVERSE` dict at the top of `refresh_data.py`
-and re-run. The in-progress current month is always dropped. Foreign listings
-(the Malaysia group) carry a Yahoo ticker and an FX pair in their entry: closes
+To change the universe, edit the `UNIVERSE` dict at the top of `refresh_data.py` —
+adding a US-listed ticker is one line (the next weekly Action run publishes it).
+The in-progress current month is always dropped. Foreign listings (the Malaysia
+and Singapore groups) carry a Yahoo ticker and an FX pair in their entry: closes
 are multiplied by the FX rate month by month, so the embedded returns are USD
-total returns — local return × currency return. (The Bursa listings are used
-instead of the US OTC ADRs because the ADR price history is full of
+total returns — local return × currency return. (The home-exchange listings are
+used instead of US OTC ADRs because the ADR price history is full of
 stale-quote artifacts.)
 
 ## Custom tickers (optional)
@@ -71,7 +77,11 @@ the same total-return basis as the embedded data, verified against yfinance to
 within ~2 bp/month), are trimmed to complete months, and are cached in your
 browser so repeat visits cost zero API calls. The key lives only in your
 browser's localStorage and is sent only to api.twelvedata.com. Free-plan
-limits (8 calls/min, 800/day) are ample: one call per ticker.
+limits (8 calls/min, 800/day) are ample: one call per ticker. Shared URLs
+carry custom tickers by symbol: anyone opening your link is prompted for
+their own key (or their stored key fetches automatically) — your key is
+never part of the link. If a custom symbol later joins the embedded
+universe, the embedded data takes precedence.
 
 ## Methodology notes
 
@@ -110,5 +120,14 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
   annualized mean excess return ÷ Ulcer index.
 - If a requested start predates any selected asset's history, the period is
   clamped to the earliest common month (noted above the summary).
+
+## Development
+
+Two files: `index.html` (engine + app) and `data.js` (generated data — never
+edit by hand). The simulation/stats engine is a block of pure functions that
+`tests/sanity.js` evals in Node and pins with 150+ assertions against
+known-good history (run `node tests/sanity.js` before shipping any change).
+`CLAUDE.md` documents the architecture, hard rules, and conventions;
+`ROADMAP.md` tracks planned and shipped work.
 
 Educational tool — not investment advice.

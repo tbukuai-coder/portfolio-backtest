@@ -126,7 +126,9 @@ Node-evaluable.
   tickers by symbol ONLY. The API key must never enter a URL. Custom tickers
   in a hash auto-fetch when `pv_td_key` is stored; otherwise `#customStatus`
   prompts and the run proceeds without them (weight totals then fail with a
-  plain message rather than silently reassigning weights).
+  plain message rather than silently reassigning weights). Playwright gotcha:
+  navigating an open page to the same URL + hash does NOT reload (no
+  `applyHash`) — test hash restores by opening the hash URL in a fresh page.
 - Correlation matrix: `corrMatrix()` scopes to the distinct tickers in the
   current runs (constituents + benchmark) — never the whole 58-asset universe.
   The card hides for single-asset runs; ticker labels are HTML-escaped
