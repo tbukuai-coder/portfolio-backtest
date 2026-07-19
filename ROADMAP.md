@@ -40,12 +40,13 @@ changes proven in Node before shipping.
       underwater = peak-to-recovery span with an "(ongoing)" note when
       `recovered: null`. Anchors: SPY-from-1994 underwater 75 mo from
       Aug 2000, Ulcer 14.2%, Calmar 0.21.
-- [ ] **Rolling returns chart** — 1/3/5/10-year rolling CAGR with a window
-      toggle (all four windows × 4 series at once is unreadable) plus a
-      best/worst/average table covering every window. Hide windows longer
-      than the sample — crypto-clamped runs have well under 10 years. The
-      biggest analytical gap vs Portfolio Visualizer, and the most chart
-      work in this section.
+- [x] **Rolling returns chart** — built 2026-07-19: `rollingCAGR()` in the
+      engine block (prefix log-sums, annualized), line chart with a
+      1y/3y/5y/10y window toggle (default 3y; windows longer than the
+      sample are hidden and the active window falls back to the largest
+      available) and a best/worst/average table across every available
+      window with window-end months. Node anchors: constant 1%/mo →
+      12.68% everywhere; SPY worst 10y −3.45%/yr (lost decade), best 16.5%.
 - [ ] **Monthly returns heatmap** — year × month table, one portfolio at a
       time behind a selector (stacking four heatmaps is too tall). Monthly
       returns are signed data: use a diverging ramp centered at zero (not

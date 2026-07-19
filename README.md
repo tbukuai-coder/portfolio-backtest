@@ -18,8 +18,9 @@ or on GitHub Pages.
   Martin ratio — plus benchmark-relative stats when a benchmark is selected:
   correlation, beta, annualized alpha, R², tracking error, information ratio
 - Portfolio growth chart (linear/log), annual returns bars, drawdown chart with
-  worst-drawdown episode tables, annual returns table — all with hover tooltips,
-  light/dark theme aware
+  worst-drawdown episode tables, rolling returns (1/3/5/10-year window toggle
+  plus a best/worst/average table across all windows), annual returns table —
+  all with hover tooltips, light/dark theme aware
 - **Custom tickers (opt-in)**: fetch any symbol's dividend-adjusted monthly
   history with your own free [Twelve Data](https://twelvedata.com/pricing) API
   key — see below

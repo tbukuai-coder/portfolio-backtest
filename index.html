@@ -165,6 +165,9 @@ details.custom a { color: inherit; }
 .tooltip .val { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
 
 .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.seg { display: inline-flex; gap: 6px; }
+.seg button { padding: 4px 12px; font-size: 13px; }
+.seg button.active { border-color: var(--ink-2); color: var(--ink); font-weight: 600; }
 .chart-head label { font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
 
 .pos { color: var(--good); }
@@ -264,6 +267,16 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="legend" id="ddLegend"></div>
       <div class="chartbox" id="ddChart"></div>
       <div id="ddTables"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-head">
+        <h2>Rolling returns <span class="note">(annualized)</span></h2>
+        <span class="seg" id="rollWins"></span>
+      </div>
+      <div class="legend" id="rollLegend"></div>
+      <div class="chartbox" id="rollChart"></div>
+      <div class="scrollx"><table id="rollTable"></table></div>
     </div>
 
     <div class="card">
@@ -399,6 +412,16 @@ function computeStats(sim, rf, market) {
 
   return { cagr, stdev: sd * Math.sqrt(12), best, worst, maxDD, episodes, ddSeries,
            sharpe, sortino, ulcer, martin, calmar, underwater, corr, yearRets, endM };
+}
+
+// annualized return of every trailing w-month window; result[k] covers
+// months [k, k+w-1] of twr, so its window ENDS at startM + w - 1 + k
+function rollingCAGR(twr, w) {
+  const pre = [0];
+  for (const r of twr) pre.push(pre[pre.length - 1] + Math.log(1 + r));
+  const out = [];
+  for (let i = w; i <= twr.length; i++) out.push(Math.expm1((pre[i] - pre[i - w]) * 12 / w));
+  return out;
 }
 
 // CAPM regression of the portfolio on the chosen benchmark (both as monthly
@@ -724,6 +747,7 @@ function run() {
   drawGrowth(LAST);
   drawAnnual(LAST);
   drawDrawdowns(LAST);
+  drawRolling(LAST);
   renderAnnualTable(LAST);
   $("results").style.display = "block";
   $("results").scrollIntoView({ behavior: "smooth" });
@@ -1001,6 +1025,84 @@ function drawDrawdowns({ runs, startM, endM }) {
     h += "</tbody></table>";
   });
   $("ddTables").innerHTML = h;
+}
+
+// ----- rolling returns -----
+const ROLL_WINDOWS = [{ w: 12, label: "1y" }, { w: 36, label: "3y" }, { w: 60, label: "5y" }, { w: 120, label: "10y" }];
+let rollWin = 36;
+
+function drawRolling({ runs, startM, endM }) {
+  const n = endM - startM + 1;
+  const avail = ROLL_WINDOWS.filter(x => x.w <= n);   // run() guarantees n >= 12
+  if (!avail.some(x => x.w === rollWin)) rollWin = avail[avail.length - 1].w;
+  $("rollWins").innerHTML = avail.map(x =>
+    `<button class="${x.w === rollWin ? "active" : ""}" data-w="${x.w}">${x.label}</button>`).join("");
+  $("rollWins").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { rollWin = +b.dataset.w; drawRolling(LAST); });
+  $("rollLegend").innerHTML = legendHTML(runs);
+
+  const w = rollWin, first = startM + w - 1;
+  const series = runs.map(r => rollingCAGR(r.sim.twr, w));
+
+  const box = $("rollChart");
+  box.innerHTML = "";
+  const W = 1000, H = 300, PAD = { l: 64, r: 20, t: 12, b: 30 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  const all = series.flat();
+  const lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+  const Y = v => PAD.t + (hi - v) / (hi - lo || 1) * (H - PAD.t - PAD.b);
+  const X = m => PAD.l + (m - first) / (endM - first || 1) * (W - PAD.l - PAD.r);
+
+  const yTicks = niceTicks(lo, hi).map(v => ({ y: Y(v), v }));
+  const yearsSpan = Math.floor(endM / 12) - Math.floor(first / 12);
+  const yrStep = Math.max(1, Math.ceil(yearsSpan / 10));
+  const xTicks = [];
+  for (let y = Math.ceil(first / 12); y * 12 <= endM; y += yrStep) xTicks.push({ x: X(y * 12), v: y });
+  axisFrame(svg, W, H, PAD, yTicks, v => fmtPct(v, 0), xTicks, v => v, Y(0));
+
+  runs.forEach((r, ri) => {
+    const d = series[ri].map((v, k) => (k ? "L" : "M") + X(first + k).toFixed(1) + " " + Y(v).toFixed(1)).join("");
+    svg.append(el("path", { d, fill: "none", stroke: r.color, "stroke-width": 2,
+                            "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  });
+
+  const cross = el("line", { y1: PAD.t, y2: H - PAD.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const tip = tooltipFor(box);
+  svg.addEventListener("pointermove", e => {
+    const pt = svg.getBoundingClientRect();
+    const fx = (e.clientX - pt.left) / pt.width * W;
+    const m = Math.round(first + (fx - PAD.l) / (W - PAD.l - PAD.r) * (endM - first));
+    if (m < first || m > endM) { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; return; }
+    cross.setAttribute("x1", X(m)); cross.setAttribute("x2", X(m));
+    cross.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div class="t-title">${w / 12}y to ${mLabel(m)}</div>` + runs.map((r, ri) => {
+      const v = series[ri][m - first];
+      return `<div class="row"><span class="dot" style="background:${r.color}"></span>${r.label}<span class="val">${fmtPct(v)}</span></div>`;
+    }).join("");
+    placeTip(tip, box, e.clientX - pt.left, e.clientY - pt.top);
+  });
+  svg.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+  box.append(svg);
+
+  // best/worst/average table across every available window
+  const sgn = v => `<span class="${v >= 0 ? "pos" : "neg"}">${fmtPct(v)}</span>`;
+  let h = "<thead><tr><th>Window</th>" +
+    runs.map(r => `<th><span class="legend"><span class="key"><span class="dot" style="background:${r.color}"></span>${r.label}</span></span></th>`).join("") +
+    "</tr></thead><tbody>";
+  avail.forEach(x => {
+    const roll = runs.map(r => rollingCAGR(r.sim.twr, x.w));
+    const stat = roll.map(s => {
+      let bi = 0, wi = 0;
+      s.forEach((v, k) => { if (v > s[bi]) bi = k; if (v < s[wi]) wi = k; });
+      return { avg: s.reduce((a, b) => a + b, 0) / s.length, bi, wi, s };
+    });
+    const end = k => `<span class="note">(to ${mLabel(startM + x.w - 1 + k)})</span>`;
+    h += `<tr><td>${x.label} average</td>` + stat.map(t => `<td>${sgn(t.avg)}</td>`).join("") + "</tr>";
+    h += `<tr><td>${x.label} best</td>` + stat.map(t => `<td>${sgn(t.s[t.bi])} ${end(t.bi)}</td>`).join("") + "</tr>";
+    h += `<tr><td>${x.label} worst</td>` + stat.map(t => `<td>${sgn(t.s[t.wi])} ${end(t.wi)}</td>`).join("") + "</tr>";
+  });
+  $("rollTable").innerHTML = h + "</tbody>";
 }
 
 // ----- annual table -----
