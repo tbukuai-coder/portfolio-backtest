@@ -14,7 +14,8 @@ script tag works from `file://`, `fetch` does not; that's what keeps the page
 serverless). `index.html` holds everything else in two `<script>` blocks: the
 **engine block** (pure functions between `/*==ENGINE-START==*/` and
 `/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()` incl.
-Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `computeBenchStats()`) and the
+Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `computeBenchStats()`,
+`corrMatrix()`, `monteCarlo()` + `mulberry32()` seeded PRNG) and the
 **app block** (DOM, form handling, SVG chart rendering). The marker comments are
 load-bearing: `tests/sanity.js` evals both blocks in Node. Don't rename or
 remove them, and keep the engine block free of DOM references so it stays

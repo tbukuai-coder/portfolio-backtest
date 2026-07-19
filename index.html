@@ -320,6 +320,19 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="scrollx"><table id="corrTable" class="heatmap"></table></div>
     </div>
 
+    <div class="card" id="mcCard">
+      <div class="chart-head">
+        <h2>Monte Carlo projection</h2>
+        <span class="seg" id="mcPorts"></span>
+      </div>
+      <div class="chart-head">
+        <label>Horizon <input type="number" id="mcYears" value="30" min="1" max="60" style="width:64px"> years</label>
+        <span class="note" id="mcStats"></span>
+      </div>
+      <div class="chartbox" id="mcChart"></div>
+      <p class="note" id="mcNote"></p>
+    </div>
+
     <div class="card">
       <h2>Annual returns table</h2>
       <div class="scrollx"><table id="annualTable"></table></div>
@@ -504,6 +517,56 @@ function rollingCAGR(twr, w) {
   const out = [];
   for (let i = w; i <= twr.length; i++) out.push(Math.expm1((pre[i] - pre[i - w]) * 12 / w));
   return out;
+}
+
+// deterministic PRNG for reproducible Monte Carlo (and Node assertions)
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// Block-bootstrap Monte Carlo: build `months`-long forward paths by resampling
+// `hist` (monthly returns, net of any fee) in 12-month blocks — blocks keep
+// volatility clustering that iid draws destroy. The cashflow spec (same shape
+// simulate() takes; step-up restarts at projection year 1) applies to a
+// starting balance; a fixed withdrawal can deplete a path. Returns per-month
+// percentile bands (10/25/50/75/90), final balances, and the survival rate.
+function monteCarlo(hist, startBal, months, cashflow, paths, seed) {
+  const cf = typeof cashflow === "object" && cashflow !== null
+    ? cashflow : { amount: cashflow || 0 };
+  const rnd = mulberry32(seed);
+  const BLOCK = Math.min(12, hist.length);
+  const perMonth = Array.from({ length: months }, () => []);
+  const finals = [];
+  let died = 0;
+  for (let p = 0; p < paths; p++) {
+    let bal = startBal, amt = cf.amount || 0, dead = bal <= 0;
+    for (let m = 0; m < months;) {
+      const start = Math.floor(rnd() * (hist.length - BLOCK + 1));
+      for (let k = 0; k < BLOCK && m < months; k++, m++) {
+        if (cf.stepUp && m > 0 && m % 12 === 0) amt *= 1 + cf.stepUp / 100;
+        if (!dead) {
+          bal *= 1 + hist[start + k];
+          if (cf.rate > 0) bal *= 1 - cf.rate / 100 / 12;
+          else if (amt) { bal += amt; if (bal <= 0) { bal = 0; dead = true; } }
+        }
+        perMonth[m].push(bal);
+      }
+    }
+    if (dead) died++;
+    finals.push(bal);
+  }
+  const qs = [0.1, 0.25, 0.5, 0.75, 0.9];
+  const bands = qs.map(() => []);
+  perMonth.forEach(arr => {
+    arr.sort((a, b) => a - b);
+    qs.forEach((q, i) => bands[i].push(arr[Math.floor(q * (arr.length - 1))]));
+  });
+  return { bands, finals: finals.sort((a, b) => a - b), survival: 1 - died / paths };
 }
 
 // pairwise Pearson correlations of the tickers' monthly returns over
@@ -795,6 +858,7 @@ $("cfMode").onchange = () => {
 };
 $("cfMode").onchange();
 $("rebal").onchange = () => { $("rebalBand").style.display = $("rebal").value === "band" ? "" : "none"; };
+$("mcYears").onchange = () => LAST && drawMC(LAST);
 let LAST = null;
 
 function run() {
@@ -862,7 +926,7 @@ function run() {
     runs.forEach(r => { r.stats.vs = computeBenchStats(r.sim.twr, benchRun.sim.twr, rf); });
   }
 
-  LAST = { runs, startM, endM, initial, benchT, band: bandMode ? band : null };
+  LAST = { runs, startM, endM, initial, benchT, band: bandMode ? band : null, cashflow };
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     cfNote +
@@ -877,6 +941,7 @@ function run() {
   drawRolling(LAST);
   renderHeatmap(LAST);
   renderCorr(LAST);
+  drawMC(LAST);
   renderAnnualTable(LAST);
   $("results").style.display = "block";
   $("results").scrollIntoView({ behavior: "smooth" });
@@ -1292,6 +1357,79 @@ function renderCorr({ runs, startM, endM }) {
   let h = "<thead><tr><th></th>" + tickers.map(t => `<th>${esc(t)}</th>`).join("") + "</tr></thead><tbody>";
   tickers.forEach((t, i) => { h += `<tr><td>${esc(t)}</td>` + M[i].map(cell).join("") + "</tr>"; });
   $("corrTable").innerHTML = h + "</tbody>";
+}
+
+// ----- Monte Carlo projection -----
+let mcIdx = 0;
+
+function drawMC({ runs, cashflow }) {
+  if (mcIdx >= runs.length) mcIdx = 0;
+  $("mcPorts").innerHTML = runs.map((r, i) =>
+    `<button class="${i === mcIdx ? "active" : ""}" data-i="${i}"><span class="dot" style="background:${r.color}"></span>${r.label}</button>`).join("");
+  $("mcPorts").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { mcIdx = +b.dataset.i; drawMC(LAST); });
+
+  const years = Math.min(60, Math.max(1, Math.round(+$("mcYears").value || 30)));
+  const r = runs[mcIdx];
+  const startBal = r.sim.balances.at(-1).v;
+  const months = years * 12;
+  const mc = monteCarlo(r.sim.twr, startBal, months, cashflow, 1000, 42);
+  const B = mc.bands.map(b => [startBal, ...b]);   // prepend t=0
+
+  const box = $("mcChart");
+  box.innerHTML = "";
+  const W = 1000, H = 320, PAD = { l: 78, r: 20, t: 12, b: 30 };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  const hi = Math.max(...B[4]), lo = Math.min(0, ...B[0]);
+  const Y = v => H - PAD.b - (v - lo) / (hi - lo || 1) * (H - PAD.t - PAD.b);
+  const X = i => PAD.l + i / months * (W - PAD.l - PAD.r);
+  const yTicks = niceTicks(lo, hi).map(v => ({ y: Y(v), v }));
+  const yrStep = Math.max(1, Math.ceil(years / 10));
+  const xTicks = [];
+  for (let y = yrStep; y <= years; y += yrStep) xTicks.push({ x: X(y * 12), v: y + "y" });
+  axisFrame(svg, W, H, PAD, yTicks,
+    v => "$" + (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.round(v).toLocaleString("en-US")),
+    xTicks, v => v, Y(Math.max(0, lo)));
+
+  const line = a => a.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join("");
+  const area = (loA, hiA) => line(hiA) +
+    loA.map((v, i) => "L" + X(loA.length - 1 - i).toFixed(1) + " " + Y(loA[loA.length - 1 - i]).toFixed(1)).join("") + "Z";
+  svg.append(el("path", { d: area(B[0], B[4]), fill: r.color, opacity: 0.12 }));
+  svg.append(el("path", { d: area(B[1], B[3]), fill: r.color, opacity: 0.18 }));
+  svg.append(el("path", { d: line(B[2]), fill: "none", stroke: r.color, "stroke-width": 2,
+                          "stroke-linejoin": "round", "stroke-linecap": "round" }));
+
+  const cross = el("line", { y1: PAD.t, y2: H - PAD.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const tip = tooltipFor(box);
+  const QL = ["90th", "75th", "Median", "25th", "10th"];
+  svg.addEventListener("pointermove", e => {
+    const pt = svg.getBoundingClientRect();
+    const i = Math.round((e.clientX - pt.left) / pt.width * W - PAD.l) / (W - PAD.l - PAD.r) * months;
+    const k = Math.round(Math.min(months, Math.max(0, i)));
+    cross.setAttribute("x1", X(k)); cross.setAttribute("x2", X(k));
+    cross.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div class="t-title">Year ${(k / 12).toFixed(1)}</div>` +
+      [4, 3, 2, 1, 0].map((bi, qi) =>
+        `<div class="row">${QL[qi]}<span class="val">${fmt$(B[bi][k])}</span></div>`).join("");
+    placeTip(tip, box, e.clientX - pt.left, e.clientY - pt.top);
+  });
+  svg.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+  box.append(svg);
+
+  const q = p => mc.finals[Math.floor(p * (mc.finals.length - 1))];
+  const withdrawing = cashflow && (cashflow.amount < 0 || cashflow.rate > 0);
+  $("mcStats").innerHTML =
+    `Final: 10th ${fmt$(q(0.1))} · median ${fmt$(q(0.5))} · 90th ${fmt$(q(0.9))}` +
+    (withdrawing && cashflow.amount < 0
+      ? ` · <b class="${mc.survival >= 0.85 ? "pos" : "neg"}">${(mc.survival * 100).toFixed(1)}% of paths survive</b>` : "");
+  $("mcNote").textContent =
+    `1,000 paths from ${fmt$(startBal)} (the backtest's final balance), resampling its monthly returns in ` +
+    `12-month blocks with the current cashflow settings (step-up restarts at projection year 1). ` +
+    `Deterministic seed — identical inputs always reproduce this fan. Bands: 10–90th and 25–75th percentiles, median line.` +
+    (r.sim.twr.length < 120
+      ? " ⚠ Backtest history is under 10 years — the resample inherits whatever regime those few years were, so treat these outcomes as very rough."
+      : "");
 }
 
 // ----- annual table -----

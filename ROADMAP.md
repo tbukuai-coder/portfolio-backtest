@@ -90,12 +90,17 @@ changes proven in Node before shipping.
       single-asset runs; ticker labels HTML-escaped (custom tickers are
       user input). Node anchors: exact-1 diagonal, symmetry, SPY-VTI
       > 0.98, SPY-TLT −0.08 since 2004, zero-variance leg → "—".
-- [ ] **Monte Carlo projection** — build AFTER withdrawals-aware framing:
-      with cashflows it's a retirement planner ("N% of resampled histories
-      survived 30 years"), without them just a fan chart. Use block
-      bootstrap (consecutive-month runs) to preserve volatility
-      clustering, deterministic seed so the Node sanity check stays
-      assertable.
+- [x] **Monte Carlo projection** — built 2026-07-19: `monteCarlo()` +
+      `mulberry32()` in the engine block. 1,000 paths from the backtest's
+      final balance, 12-month block bootstrap of its net-of-fee twr,
+      current cashflow settings applied (step-up restarts at projection
+      year 1), seed 42. Fan chart (10–90 and 25–75 bands + median, hover
+      readout), per-portfolio selector, 1–60y horizon, final-balance
+      percentiles, and "N% of paths survive" when withdrawing. Warns when
+      the backtest history is under 10 years (a short bull sample
+      produces fantasy fans). Node anchors: zero/constant-return
+      histories are exact, same seed reproduces bands byte-identically,
+      ordered percentiles, guaranteed-depletion → 0% survival.
 
 ## Data & universe (all via `refresh_data.py`)
 

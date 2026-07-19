@@ -32,8 +32,10 @@ or on GitHub Pages.
   worst-drawdown episode tables, rolling returns (1/3/5/10-year window toggle
   plus a best/worst/average table across all windows), monthly returns heatmap
   (year × month, diverging blue↔red fill with a portfolio selector), asset
-  correlation matrix (the backtest's assets over its window), annual
-  returns table — all with hover tooltips, light/dark theme aware
+  correlation matrix (the backtest's assets over its window), **Monte Carlo
+  projection** (1,000 block-bootstrap paths from the backtest's final balance
+  over a 1–60y horizon, percentile fan + survival rate under withdrawals),
+  annual returns table — all with hover tooltips, light/dark theme aware
 - **Custom tickers (opt-in)**: fetch any symbol's dividend-adjusted monthly
   history with your own free [Twelve Data](https://twelvedata.com/pricing) API
   key — see below
@@ -93,6 +95,11 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
   annualized geometrically. Tracking error is the annualized standard deviation
   of monthly active returns (portfolio − benchmark); information ratio is the
   annualized mean active return ÷ tracking error.
+- Monte Carlo resamples the backtest's own monthly returns in 12-month blocks
+  (preserving volatility clustering), with a fixed seed so results are
+  reproducible; it is only as representative as the backtest window it
+  resamples — short windows inherit their regime, and the page warns when
+  history is under 10 years.
 - Max drawdown is month-end based — intra-month dips are invisible. Longest
   underwater is the peak-to-recovery span of the longest drawdown episode
   (marked "ongoing" if unrecovered). Calmar = CAGR ÷ |max drawdown|; Ulcer

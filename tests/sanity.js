@@ -184,6 +184,39 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   delete PV_DATA.series.__FLAT;
 }
 
+// Monte Carlo
+{
+  const flat = Array(120).fill(0);
+  const one = Array(120).fill(0.01);
+  // zero-return history, no cashflow: every path stays exactly at start
+  const z = monteCarlo(flat, 10000, 60, 0, 200, 42);
+  assert(z.bands.every(b => b.every(v => v === 10000)), "zero returns -> flat at start balance");
+  assert(z.survival === 1, "no withdrawal -> full survival");
+  // constant history: every path identical, final = start * 1.01^months
+  const c = monteCarlo(one, 10000, 60, 0, 200, 42);
+  const expect = 10000 * Math.pow(1.01, 60);
+  assert(c.bands.every(b => Math.abs(b[59] - expect) < 1e-6), "constant returns -> deterministic compounding");
+  // determinism: same seed twice -> identical output
+  const spyHist = simulate([{ t: "SPY", w: 100 }], mIdx("2004-01"), endM, 10000, 0, 0).twr;
+  const m1 = monteCarlo(spyHist, 10000, 360, 0, 300, 42);
+  const m2 = monteCarlo(spyHist, 10000, 360, 0, 300, 42);
+  assert(JSON.stringify(m1.bands) === JSON.stringify(m2.bands), "same seed reproduces bands exactly");
+  assert(monteCarlo(spyHist, 10000, 360, 0, 300, 43).bands[2][359] !== m1.bands[2][359],
+         "different seed differs");
+  // real history: bands ordered, median grows over 30y
+  const last = m1.bands.map(b => b[359]);
+  assert(last[0] < last[1] && last[1] < last[2] && last[2] < last[3] && last[3] < last[4],
+         "percentile bands are ordered");
+  assert(m1.bands[2][359] > 10000, "SPY median 30y outcome grows");
+  // certain depletion: zero returns, withdrawal > balance/horizon
+  const d = monteCarlo(flat, 1000, 60, { amount: -100 }, 200, 42);
+  assert(d.survival === 0, "guaranteed depletion -> survival 0");
+  assert(d.bands[4][59] === 0, "all paths end at 0");
+  console.log("MC SPY 30y from 10k: 10th", Math.round(m1.finals[Math.floor(0.1 * 299)]),
+              "median", Math.round(m1.finals[Math.floor(0.5 * 299)]),
+              "90th", Math.round(m1.finals[Math.floor(0.9 * 299)]));
+}
+
 // Data freshness + shape
 // freshness: the data must end at the previous complete month, or at most one
 // month behind it (a normal mid-month run before the next refresh)
