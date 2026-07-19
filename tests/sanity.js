@@ -93,7 +93,14 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
 }
 
 // Data freshness + shape
-assert(PV_DATA.end === "2026-06", "data runs through 2026-06 (got " + PV_DATA.end + ")");
+// freshness: the data must end at the previous complete month, or at most one
+// month behind it (a normal mid-month run before the next refresh)
+{
+  const now = new Date();
+  const prevM = now.getFullYear() * 12 + now.getMonth() - 1;
+  assert(endM <= prevM && endM >= prevM - 1,
+         "data end " + PV_DATA.end + " within a month of current (prev complete = " + mKey(prevM) + ")");
+}
 assert(Object.keys(PV_DATA.series).length === 37, "37 series embedded");
 
 // Malaysia group: USD-converted Bursa listings + EWM
