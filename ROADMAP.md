@@ -103,10 +103,14 @@ changes proven in Node before shipping.
       mechanism. Cheap to add, but each new asset grows `data.js`; keep
       the curated feel rather than becoming a ticker search box (which
       would break the no-server-calls rule anyway).
-- [ ] **Automated monthly refresh** — a scheduled GitHub Action that runs
-      `refresh_data.py`, re-runs the Node engine sanity check, and commits
-      the regenerated `data.js`. Removes the manual refresh chore; the
-      sanity check is the gate that makes auto-commit safe.
+- [x] **Automated monthly refresh** — built 2026-07-19:
+      `.github/workflows/refresh-data.yml` (cron 06:17 UTC on the 2nd of
+      each month + manual dispatch) runs `refresh_data.py` with 3 retries,
+      gates on `tests/sanity.js`, commits `data.js` only when both pass,
+      and opens an issue on failure so staleness is never silent. First
+      runner test passed — yfinance works from GitHub runner IPs. The
+      sanity freshness assertion is date-relative (previous complete
+      month, at most one behind), so successful refreshes don't trip it.
 
 ## Distribution
 
