@@ -99,11 +99,14 @@ changes proven in Node before shipping.
       stale-quote garbage prints (TNABY: −89% then +590%). `refresh_data.py`
       now hard-fails on interior month gaps so a spotty series can never
       silently misalign.
-- [ ] **Universe expansion** — factor ETFs (MTUM/QUAL), EM bonds, a few
-      more mega-caps or another country group via the FX-conversion
-      mechanism. Cheap to add, but each new asset grows `data.js`; keep
-      the curated feel rather than becoming a ticker search box (which
-      would break the no-server-calls rule anyway).
+- [x] **Universe expansion (tiers 1–2)** — added 2026-07-19: building
+      blocks VXUS, SCHD, MTUM, QUAL, EMB, BNDX, EWS and mega-caps AVGO,
+      JPM, LLY, COST (JPM/LLY reach 1985, COST 1986). 53 series total.
+- [ ] **Singapore group (tier 3)** — DBS/OCBC/UOB (+ maybe SingTel,
+      CapitaLand) via SGX listings × `SGDUSD=X`, same mechanism as the
+      Malaysia group; needs the identity/gap/garbage-print probes first.
+      Keep the curated feel rather than becoming a ticker search box
+      (which would break the no-server-calls rule anyway).
 - [x] **Automated refresh** — built 2026-07-19:
       `.github/workflows/refresh-data.yml` (cron 01:17 UTC Saturday — US
       Friday post-market, so a month ending on its final Friday is captured
