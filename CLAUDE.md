@@ -106,8 +106,9 @@ Node-evaluable.
 
 Own git repo → github.com/tbukuai-coder/portfolio-backtest, served by GitHub
 Pages from main branch root (legacy build — a push to main is the deploy).
-Data refresh is automated: `.github/workflows/refresh-data.yml` runs every
-Monday (or manual dispatch), gates on `tests/sanity.js`, and commits `data.js`
+Data refresh is automated: `.github/workflows/refresh-data.yml` runs weekly
+after the US Friday close (01:17 UTC Saturday; also manual dispatch), gates on
+`tests/sanity.js`, and commits `data.js`
 only when a new complete month landed (weekly runs are retry resilience, not
 commit churn); it opens an issue on failure. The same cycle works manually:
 `python3 refresh_data.py`, `node tests/sanity.js`, commit `data.js`, push.

@@ -2,9 +2,12 @@ name: Monthly data refresh
 
 on:
   schedule:
-    - cron: "17 6 * * 1"   # 06:17 UTC every Monday — the commit guard below
-                           # only lands a commit when a new complete month
-                           # appears, so weekly runs are retries, not churn
+    - cron: "17 1 * * 6"   # 01:17 UTC Saturday = Friday post-market ET. When a
+                           # month ends on its final Friday this is already the
+                           # 1st in UTC, so the new month is captured same-night.
+                           # The commit guard below only lands a commit when a
+                           # new complete month appears — weekly runs are
+                           # retries, not churn.
   workflow_dispatch:
 
 permissions:

@@ -104,8 +104,10 @@ changes proven in Node before shipping.
       the curated feel rather than becoming a ticker search box (which
       would break the no-server-calls rule anyway).
 - [x] **Automated refresh** — built 2026-07-19:
-      `.github/workflows/refresh-data.yml` (cron 06:17 UTC every Monday +
-      manual dispatch) runs `refresh_data.py` with 3 retries, gates on
+      `.github/workflows/refresh-data.yml` (cron 01:17 UTC Saturday — US
+      Friday post-market, so a month ending on its final Friday is captured
+      same-night — + manual dispatch) runs `refresh_data.py` with 3 retries,
+      gates on
       `tests/sanity.js`, and commits `data.js` only when a new complete
       month landed — so the weekly cadence is failure resilience (a bad
       run after month-end self-heals within a week), while commits stay
