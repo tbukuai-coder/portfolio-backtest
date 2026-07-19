@@ -281,7 +281,10 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
     deviation of the same excess returns. Beta/alpha/R² are a CAPM regression of monthly excess returns on
     the benchmark's (alpha annualized); tracking error = annualized st.dev. of monthly active returns, and
     information ratio = annualized mean active return ÷ tracking error. Max drawdown is month-end based
-    (intra-month dips are invisible). Educational tool — not investment advice.
+    (intra-month dips are invisible); longest underwater is the peak-to-recovery span of the longest
+    drawdown episode. Calmar = CAGR ÷ |max drawdown|; Ulcer index = RMS of the monthly drawdown series;
+    Martin ratio = annualized mean excess return ÷ Ulcer index.
+    Educational tool — not investment advice.
   </footer>
 </div>
 
@@ -370,6 +373,18 @@ function computeStats(sim, rf, market) {
   const sharpe = exSd > 0 ? exMean / exSd * Math.sqrt(12) : NaN;
   const sortino = downside > 0 ? exMean / downside * Math.sqrt(12) : NaN;
 
+  // drawdown-depth-weighted risk and recovery stats
+  const ddVals = ddSeries.slice(1).map(d => d.dd);   // skip the seeded zero at startM-1
+  const ulcer = Math.sqrt(ddVals.reduce((s, d) => s + d * d, 0) / n);
+  const martin = ulcer > 0 ? exMean * 12 / ulcer : NaN;
+  const calmar = maxDD < 0 ? cagr / -maxDD : NaN;
+  let underwater = null;
+  for (const e of episodes) {
+    const months = (e.recovered ?? endM) - e.start;
+    if (!underwater || months > underwater.months)
+      underwater = { months, start: e.start, ongoing: e.recovered === null };
+  }
+
   // correlation with the US market series
   let corr = NaN;
   if (market) {
@@ -383,7 +398,7 @@ function computeStats(sim, rf, market) {
   }
 
   return { cagr, stdev: sd * Math.sqrt(12), best, worst, maxDD, episodes, ddSeries,
-           sharpe, sortino, corr, yearRets, endM };
+           sharpe, sortino, ulcer, martin, calmar, underwater, corr, yearRets, endM };
 }
 
 // CAPM regression of the portfolio on the chosen benchmark (both as monthly
@@ -431,6 +446,7 @@ const SERIES_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 const fmt$ = v => "$" + Math.round(v).toLocaleString("en-US");
 const fmtPct = (v, d = 1) => isFinite(v) ? (v >= 0 ? "" : "−") + (Math.abs(v) * 100).toFixed(d) + "%" : "—";
 const fmtNum = v => isFinite(v) ? v.toFixed(2) : "—";
+const fmtDur = m => m >= 12 ? Math.floor(m / 12) + "y " + m % 12 + "m" : m + " mo";
 const MO_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const dataMin = Math.min(...Object.values(PV_DATA.series).map(s => mIdx(s.start)));
@@ -722,8 +738,16 @@ function renderSummary({ runs, benchT }) {
     ["Best year", r => `${cls(fmtPct(r.stats.best.r), r.stats.best.r)} <span class="note">(${r.stats.best.y})</span>`],
     ["Worst year", r => `${cls(fmtPct(r.stats.worst.r), r.stats.worst.r)} <span class="note">(${r.stats.worst.y})</span>`],
     ["Max drawdown", r => cls(fmtPct(r.stats.maxDD), r.stats.maxDD)],
+    ["Longest underwater", r => {
+      const u = r.stats.underwater;
+      return u ? fmtDur(u.months) + (u.ongoing ? ' <span class="note">(ongoing)</span>'
+                                               : ` <span class="note">(from ${mLabel(u.start)})</span>`) : "—";
+    }],
     ["Sharpe ratio", r => fmtNum(r.stats.sharpe)],
     ["Sortino ratio", r => fmtNum(r.stats.sortino)],
+    ["Calmar ratio", r => fmtNum(r.stats.calmar)],
+    ["Ulcer index", r => fmtPct(r.stats.ulcer, 2)],
+    ["Martin ratio", r => fmtNum(r.stats.martin)],
   ];
   if (benchT) {
     rows.push(

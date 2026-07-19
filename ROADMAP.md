@@ -32,13 +32,14 @@ changes proven in Node before shipping.
       to the summary when a benchmark is selected; the correlation-to-SPY
       row remains for benchmark "None". Degenerate benchmarks (cash) render
       "—" via a variance-epsilon guard rather than dividing by float noise.
-- [ ] **Risk-stat batch: Ulcer index, Martin ratio, Calmar ratio, underwater
-      duration** — all derivable from existing `computeStats()` internals
-      (`ddSeries`, `episodes`, the excess-return mean); Calmar is one
-      division on numbers already in the stats object. Care points: report
-      an unrecovered episode (`recovered: null`) as "N months and counting"
-      instead of skipping it, and exclude the seeded zero point at
-      `startM − 1` from the Ulcer mean.
+- [x] **Risk-stat batch: Ulcer index, Martin ratio, Calmar ratio, underwater
+      duration** — built 2026-07-19 inside `computeStats()` (`ulcer`,
+      `martin`, `calmar`, `underwater`): Ulcer = RMS of `ddSeries` excluding
+      the seeded zero, Martin = annualized mean excess return ÷ Ulcer,
+      Calmar = CAGR ÷ |maxDD| ("—" for drawdown-free cash), longest
+      underwater = peak-to-recovery span with an "(ongoing)" note when
+      `recovered: null`. Anchors: SPY-from-1994 underwater 75 mo from
+      Aug 2000, Ulcer 14.2%, Calmar 0.21.
 - [ ] **Rolling returns chart** — 1/3/5/10-year rolling CAGR with a window
       toggle (all four windows × 4 series at once is unreadable) plus a
       best/worst/average table covering every window. Hide windows longer

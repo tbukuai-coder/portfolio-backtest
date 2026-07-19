@@ -14,9 +14,9 @@ or on GitHub Pages.
 - Start/end month, initial amount, **monthly contributions**, rebalancing
   (monthly / quarterly / semi-annual / annual / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
-  max drawdown, Sharpe, Sortino — plus benchmark-relative stats when a benchmark
-  is selected: correlation, beta, annualized alpha, R², tracking error,
-  information ratio
+  max drawdown, longest underwater stretch, Sharpe, Sortino, Calmar, Ulcer index,
+  Martin ratio — plus benchmark-relative stats when a benchmark is selected:
+  correlation, beta, annualized alpha, R², tracking error, information ratio
 - Portfolio growth chart (linear/log), annual returns bars, drawdown chart with
   worst-drawdown episode tables, annual returns table — all with hover tooltips,
   light/dark theme aware
@@ -64,7 +64,11 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
   annualized geometrically. Tracking error is the annualized standard deviation
   of monthly active returns (portfolio − benchmark); information ratio is the
   annualized mean active return ÷ tracking error.
-- Max drawdown is month-end based — intra-month dips are invisible.
+- Max drawdown is month-end based — intra-month dips are invisible. Longest
+  underwater is the peak-to-recovery span of the longest drawdown episode
+  (marked "ongoing" if unrecovered). Calmar = CAGR ÷ |max drawdown|; Ulcer
+  index = root-mean-square of the monthly drawdown series; Martin ratio =
+  annualized mean excess return ÷ Ulcer index.
 - If a requested start predates any selected asset's history, the period is
   clamped to the earliest common month (noted above the summary).
 
