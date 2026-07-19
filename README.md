@@ -21,8 +21,9 @@ or on GitHub Pages.
 - Start/end month, initial amount, **cashflows** — contribute or withdraw
   $/month with an optional annual step-up (inflation-adjusted 4%-rule style),
   or withdraw a fixed % of balance per year; unsustainable withdrawals show
-  the **depletion month** — and rebalancing (monthly / quarterly /
-  semi-annual / annual / **tolerance band** with a rebalance count / none)
+  the **depletion month** — an **annual fee** input (ER/advisor drag, benchmark
+  stays gross), and rebalancing (monthly / quarterly / semi-annual / annual /
+  **tolerance band** with a rebalance count / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
   max drawdown, longest underwater stretch, Sharpe, Sortino, Calmar, Ulcer index,
   Martin ratio — plus benchmark-relative stats when a benchmark is selected:
@@ -70,7 +71,9 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
 
 - Stats (CAGR, volatility, Sharpe, Sortino, drawdowns) are computed on
   **time-weighted** monthly returns, so contributions don't distort them;
-  the final balance does include contributions.
+  the final balance does include contributions. The annual fee is the one
+  input that does change the return series — it's deducted as (1 − fee/12)
+  from each monthly return, portfolios only; the benchmark stays gross.
 - Cashflows happen at month-end: contributions buy in at target weights;
   withdrawals sell pro-rata from current holdings. Step-ups apply each January.
   Percent-of-balance withdrawals take (rate ÷ 12) of the current balance

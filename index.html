@@ -213,6 +213,7 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       </div>
       <div class="ctl"><label id="cfAmtLabel">Amount ($/month)</label><input type="number" id="cfAmount" value="0" step="100" min="0"></div>
       <div class="ctl"><label>Step-up (%/year)</label><input type="number" id="cfStep" value="0" step="0.5" min="0" title="Grow the monthly amount by this much every January — e.g. inflation-adjusted 4%-rule withdrawals"></div>
+      <div class="ctl"><label>Annual fee (%)</label><input type="number" id="fee" value="0" step="0.1" min="0" title="Expense ratio / advisor fee, deducted monthly from portfolio returns. The benchmark stays gross."></div>
       <div class="ctl"><label>Rebalancing</label>
         <div class="pair">
           <select id="rebal">
@@ -368,7 +369,10 @@ function ret(t, m) {
 // quarter-ends for 3) or {band: X} — rebalance whenever any weight drifts
 // more than X percentage points from target, checked monthly after cashflows.
 // `rebals` in the result counts rebalancing events in every mode.
-function simulate(alloc, startM, endM, initial, cashflow, rebalEvery) {
+// feePct: annual fee (ER/advisor) as a %, deducted as (1 - fee/12) monthly
+// INSIDE the return — fees are a real return reduction, so unlike cashflows
+// they deliberately DO change twr (net-of-fee).
+function simulate(alloc, startM, endM, initial, cashflow, rebalEvery, feePct) {
   const cf = typeof cashflow === "object" && cashflow !== null
     ? cashflow : { amount: cashflow || 0 };
   const rb = typeof rebalEvery === "object" && rebalEvery !== null
@@ -380,8 +384,9 @@ function simulate(alloc, startM, endM, initial, cashflow, rebalEvery) {
   let depleted = null;
   for (let m = startM; m <= endM; m++) {
     if (cf.stepUp && m % 12 === 0 && m > startM) amt *= 1 + cf.stepUp / 100;
+    const feeF = 1 - (feePct || 0) / 100 / 12;
     const v0 = vals.reduce((s, x) => s + x, 0);
-    for (let i = 0; i < alloc.length; i++) vals[i] *= 1 + ret(alloc[i].t, m);
+    for (let i = 0; i < alloc.length; i++) vals[i] *= (1 + ret(alloc[i].t, m)) * feeF;
     let v1 = vals.reduce((s, x) => s + x, 0);
     twr.push(v0 > 0 ? v1 / v0 - 1 : 0);
     if (cf.rate > 0) {
@@ -812,12 +817,14 @@ function run() {
   const bandMode = $("rebal").value === "band";
   const band = Math.max(0.5, +$("rebalBand").value || 5);
   const rebal = bandMode ? { band } : +$("rebal").value;
+  const fee = Math.min(20, Math.max(0, +$("fee").value || 0));
 
   const rf = [], market = [];
   for (let m = startM; m <= endM; m++) { rf.push(ret("CASHX", m)); market.push(ret("SPY", m)); }
 
   runs.forEach(r => {
-    r.sim = simulate(r.alloc, startM, endM, initial, cashflow, rebal);
+    // the benchmark run stays gross-of-fee; portfolios carry the fee
+    r.sim = simulate(r.alloc, startM, endM, initial, cashflow, rebal, r.isBench ? 0 : fee);
     r.stats = computeStats(r.sim, rf, market);
   });
 
@@ -834,6 +841,7 @@ function run() {
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     cfNote +
     (bandMode ? ` · ${band}% tolerance-band rebalancing` : "") +
+    (fee ? ` · ${fee}% annual fee (benchmark gross)` : "") +
     (clamped ? ` · start clamped to earliest data for ${clamped}` : "") +
     (endClamp ? ` · end clamped to last data for ${endClamp}` : "");
   renderSummary(LAST);

@@ -76,10 +76,13 @@ changes proven in Node before shipping.
       band ∞ ≡ never (exact), single asset never triggers, annual mode
       counts one per December; 60/40 at 5% → 15 rebalances over 270
       months.
-- [ ] **Expense/fee drag** — annual ER/advisor fee as a monthly return
-      deduction. Five engine lines, endlessly requested. NOTE: fees are a
-      real return reduction, so this legitimately DOES change twr — the
-      one deliberate exception to the cashflow-invariance rule.
+- [x] **Expense/fee drag** — built 2026-07-19: "Annual fee (%)" input,
+      deducted as (1 − fee/12) inside each monthly return, so twr is
+      net-of-fee — the one deliberate exception to cashflow invariance.
+      Portfolios carry the fee; the benchmark run stays gross (periodNote
+      says so). Node anchors: fee 0 is a byte-identical no-op, net twr =
+      (1+gross)(1−fee/12)−1 exactly every month, 1% fee ≈ 1.08pp CAGR
+      drag on 60/40 since 2004.
 - [ ] **Asset correlation matrix** — scope to the assets in the current
       backtest (portfolio constituents + benchmark, ≤ ~10) over the
       clamped window, NOT all 58 embedded assets. Render as a table with

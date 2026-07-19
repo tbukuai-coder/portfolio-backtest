@@ -48,7 +48,10 @@ Node-evaluable.
   `color_scheme="light"` and `"dark"`, and assert zero console/page errors.
 - **Keep stats time-weighted.** `computeStats()` runs on the TWR series, never
   on the cashflow-inflated balance series; only the final balance and the growth
-  chart reflect contributions. If you add a metric, feed it `sim.twr`.
+  chart reflect contributions. If you add a metric, feed it `sim.twr`. The one
+  deliberate exception: the annual fee (simulate's 7th arg) IS inside twr —
+  fees are a real return reduction, not a cashflow. The benchmark run is
+  always simulated gross-of-fee.
 
 ## Conventions & quirks
 

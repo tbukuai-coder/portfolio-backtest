@@ -152,6 +152,23 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
          "annual mode counts one rebalance per December");
 }
 
+// Fee drag
+{
+  const s4 = mIdx("2004-01");
+  const bal = [{ t: "SPY", w: 60 }, { t: "AGG", w: 40 }];
+  const gross = simulate(bal, s4, endM, 10000, 0, 12);
+  const zero = simulate(bal, s4, endM, 10000, 0, 12, 0);
+  assert(Math.max(...gross.twr.map((v, i) => Math.abs(v - zero.twr[i]))) === 0, "fee 0 is a no-op");
+  const net = simulate(bal, s4, endM, 10000, 0, 12, 1);
+  const f = 1 - 1 / 100 / 12;
+  const worst = Math.max(...net.twr.map((v, i) => Math.abs(v - ((1 + gross.twr[i]) * f - 1))));
+  assert(worst < 1e-12, "net twr = (1+gross)*(1-fee/12)-1 exactly, every month");
+  const gs = computeStats(gross, rfFrom(s4), null), ns = computeStats(net, rfFrom(s4), null);
+  const drag = (gs.cagr - ns.cagr) * 100;
+  console.log("1% fee CAGR drag:", drag.toFixed(3), "pp/yr");
+  assert(drag > 0.9 && drag < 1.15, "1% annual fee costs ~1pp of CAGR");
+}
+
 // Data freshness + shape
 // freshness: the data must end at the previous complete month, or at most one
 // month behind it (a normal mid-month run before the next refresh)
