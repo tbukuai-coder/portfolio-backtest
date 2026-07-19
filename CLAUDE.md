@@ -13,10 +13,11 @@ by `index.html` via a plain `<script src="data.js">` (NOT `fetch` — a classic
 script tag works from `file://`, `fetch` does not; that's what keeps the page
 serverless). `index.html` holds everything else in two `<script>` blocks: the
 **engine block** (pure functions between `/*==ENGINE-START==*/` and
-`/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()`) and the
+`/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()` incl.
+Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `computeBenchStats()`) and the
 **app block** (DOM, form handling, SVG chart rendering). The marker comments are
-load-bearing: the engine tests eval both blocks in Node. Don't rename or remove
-them, and keep the engine block free of DOM references so it stays
+load-bearing: `tests/sanity.js` evals both blocks in Node. Don't rename or
+remove them, and keep the engine block free of DOM references so it stays
 Node-evaluable.
 
 ## Hard rules
@@ -25,22 +26,15 @@ Node-evaluable.
   `python3 refresh_data.py` (edit the `UNIVERSE` dict there to change assets).
   The script drops the in-progress current month — keep that; a partial month
   poisons every stat downstream.
-- **Engine changes must be sanity-tested in Node before shipping.** Eval
-  `data.js` and the engine block (replace `const PV_DATA` with `var PV_DATA`
-  first — `const` inside `eval` doesn't escape to the caller's scope):
-
-  ```bash
-  node -e '
-  const fs = require("fs");
-  const html = fs.readFileSync("index.html","utf8");
-  const grab = (a,b) => html.split(a)[1].split(b)[0];
-  eval(fs.readFileSync("data.js","utf8").replace("const PV_DATA","var PV_DATA"));
-  eval(grab("/*==ENGINE-START==*/","/*==ENGINE-END==*/"));
-  // ... assertions here'
-  ```
-
-  Known-good anchors: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max drawdown
-  ≈ −50.8% (trough Feb 2009); All Weather's worst year is 2022. Contributions
+- **Engine or data changes must pass `node tests/sanity.js` before shipping**
+  (78 assertions; it evals `data.js` + the engine block, replacing
+  `const PV_DATA` with `var` first — `const` inside `eval` doesn't escape to
+  the caller's scope). Extend it when you add a metric or an asset. Known-good
+  anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max drawdown ≈ −50.8%
+  (trough Feb 2009), longest underwater 75 mo from Aug 2000 (dot-com beat the
+  GFC), worst rolling 10y ≈ −3.5%/yr, Ulcer ≈ 14%; All Weather's worst year is
+  2022; SPY-vs-SPY benchmark stats are exact identities (beta 1, alpha 0,
+  R² 1, TE 0, IR NaN); MAYBANK (USD) from 2004 → CAGR ≈ 7.9%. Contributions
   must leave the TWR series unchanged for a single-asset portfolio (up to ~1e-15
   float noise — compare with a tolerance, not stringify).
 - **Render-check both themes.** No build/lint exists; verification is headless
@@ -77,7 +71,25 @@ Node-evaluable.
   annual chart renders at natural pixel width inside `.scrollx` — don't let it
   shrink-to-fit or the tick text becomes unreadable.
 - Benchmark dedup: if a portfolio is already 100% of the benchmark ticker, no
-  separate benchmark series is added.
+  separate benchmark series is added — `run()` then uses that portfolio's own
+  sim as the benchmark leg for `computeBenchStats()`.
+- Benchmark-relative summary rows (correlation/beta/alpha/R²/TE/IR) render only
+  when `#bench` is set; with benchmark "None" a plain correlation-to-SPY row
+  shows instead. `computeBenchStats()` guards degenerate variance with
+  `EPS = 1e-18` — a cash benchmark leaves ~1e-32 float noise, not exact zero,
+  and would otherwise produce a garbage beta instead of "—". `fmtPct`/`fmtNum`
+  and the pos/neg wrapper are NaN-safe (render "—"); keep new formatters that
+  way.
+- Rolling returns: `rollWin` (12/36/60/120 months, default 36) persists across
+  runs; windows longer than the sample are hidden and the active window falls
+  back to the largest available. The best/worst/average table always covers
+  every available window regardless of the chart's active one.
+- Monthly heatmap: diverging blue↔red fill via
+  `color-mix(in oklab, var(--hm-pos|--hm-neg) t%, var(--hm-mid))`, saturating
+  at ±8%/mo. The `--hm-*` poles are per-theme (darker in dark mode so white
+  cell text keeps ≥4.5:1) and were validated with the dataviz palette script —
+  re-validate if you change them. Exact numbers stay in every cell in ink
+  tokens; color is never the only encoding.
 - Custom tickers (opt-in Twelve Data fetch — see `DATA-API-PLAN.md` for why
   that provider): fetched series are merged into the **in-memory**
   `PV_DATA.series` only — `data.js` stays untouched — under group
@@ -94,5 +106,5 @@ Node-evaluable.
 
 Own git repo → github.com/tbukuai-coder/portfolio-backtest, served by GitHub
 Pages from main branch root (legacy build — a push to main is the deploy).
-Data refresh cycle: `python3 refresh_data.py`, re-run the Node sanity check,
+Data refresh cycle: `python3 refresh_data.py`, `node tests/sanity.js`,
 commit the regenerated `data.js`, push.
