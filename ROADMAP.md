@@ -24,22 +24,32 @@ changes proven in Node before shipping.
       charts already scale, mostly needs hiding the form and forcing light
       theme.
 
-## Metrics & analytics (all feed on `sim.twr`)
+## Metrics & analytics (all feed on `sim.twr`; ordered by value per effort)
 
-- [ ] **Rolling returns chart** — 1/3/5/10-year rolling CAGR lines with a
-      best/worst/average table per window. The single biggest analytical gap
-      vs Portfolio Visualizer.
-- [ ] **Benchmark-relative stats** — beta, annualized alpha, R², tracking
-      error, information ratio vs the chosen benchmark. Correlation to SPY is
-      already computed; these are the same regression done properly against
-      `#bench` instead of hardcoded SPY.
-- [ ] **Monthly returns heatmap** — year × month table per portfolio,
-      colored by sign/magnitude (use the dataviz-skill sequential ramp, and
-      keep numbers in the cells — color alone is sub-contrast).
-- [ ] **Ulcer index + Martin ratio** — drawdown-depth-weighted risk; the
-      drawdown series already exists in `computeStats()`.
-- [ ] **Underwater duration stats** — longest time-to-recovery called out in
-      the summary, not just discoverable in the episode tables.
+- [x] **Benchmark-relative stats** — built 2026-07-19: beta, annualized CAPM
+      alpha, R², tracking error, information ratio, and correlation vs the
+      chosen `#bench` (`computeBenchStats()` in the engine block), appended
+      to the summary when a benchmark is selected; the correlation-to-SPY
+      row remains for benchmark "None". Degenerate benchmarks (cash) render
+      "—" via a variance-epsilon guard rather than dividing by float noise.
+- [ ] **Risk-stat batch: Ulcer index, Martin ratio, Calmar ratio, underwater
+      duration** — all derivable from existing `computeStats()` internals
+      (`ddSeries`, `episodes`, the excess-return mean); Calmar is one
+      division on numbers already in the stats object. Care points: report
+      an unrecovered episode (`recovered: null`) as "N months and counting"
+      instead of skipping it, and exclude the seeded zero point at
+      `startM − 1` from the Ulcer mean.
+- [ ] **Rolling returns chart** — 1/3/5/10-year rolling CAGR with a window
+      toggle (all four windows × 4 series at once is unreadable) plus a
+      best/worst/average table covering every window. Hide windows longer
+      than the sample — crypto-clamped runs have well under 10 years. The
+      biggest analytical gap vs Portfolio Visualizer, and the most chart
+      work in this section.
+- [ ] **Monthly returns heatmap** — year × month table, one portfolio at a
+      time behind a selector (stacking four heatmaps is too tall). Monthly
+      returns are signed data: use a diverging ramp centered at zero (not
+      sequential — that would shade −8% and +8% equally), and keep numbers
+      in the cells — color alone is sub-contrast.
 
 ## Simulation features
 

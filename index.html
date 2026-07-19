@@ -278,8 +278,10 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
     (Dec for annual, quarter-ends for quarterly). CAGR, volatility, drawdowns, Sharpe and Sortino are
     computed on time-weighted monthly returns, so contributions don't distort them. Sharpe = mean monthly
     excess return over 3-month T-bills ÷ its standard deviation, annualized ×√12; Sortino uses downside
-    deviation of the same excess returns. Max drawdown is month-end based (intra-month dips are invisible).
-    Educational tool — not investment advice.
+    deviation of the same excess returns. Beta/alpha/R² are a CAPM regression of monthly excess returns on
+    the benchmark's (alpha annualized); tracking error = annualized st.dev. of monthly active returns, and
+    information ratio = annualized mean active return ÷ tracking error. Max drawdown is month-end based
+    (intra-month dips are invisible). Educational tool — not investment advice.
   </footer>
 </div>
 
@@ -383,6 +385,42 @@ function computeStats(sim, rf, market) {
   return { cagr, stdev: sd * Math.sqrt(12), best, worst, maxDD, episodes, ddSeries,
            sharpe, sortino, corr, yearRets, endM };
 }
+
+// CAPM regression of the portfolio on the chosen benchmark (both as monthly
+// excess returns over cash); tracking error / IR on the raw active returns.
+function computeBenchStats(twr, bench, rf) {
+  const n = twr.length;
+  const mean = a => a.reduce((s, r) => s + r, 0) / n;
+  const pe = twr.map((r, i) => r - rf[i]);
+  const be = bench.map((r, i) => r - rf[i]);
+  const pm = mean(pe), bm = mean(be);
+  let cov = 0, bv = 0, pv = 0;
+  for (let i = 0; i < n; i++) {
+    cov += (pe[i] - pm) * (be[i] - bm);
+    bv += (be[i] - bm) ** 2;
+    pv += (pe[i] - pm) ** 2;
+  }
+  // a zero-variance leg (cash benchmark) leaves only float noise in the sums;
+  // treat it as degenerate rather than dividing by ~1e-32
+  const EPS = 1e-18;
+  const beta = bv > EPS ? cov / bv : NaN;
+  const alpha = Math.pow(1 + (pm - beta * bm), 12) - 1;
+  const r2 = (bv > EPS && pv > EPS) ? (cov * cov) / (bv * pv) : NaN;
+  // correlation on raw returns, so it matches the standalone SPY correlation
+  const tm = mean(twr), km = mean(bench);
+  let cnum = 0, cd1 = 0, cd2 = 0;
+  for (let i = 0; i < n; i++) {
+    cnum += (twr[i] - tm) * (bench[i] - km);
+    cd1 += (twr[i] - tm) ** 2; cd2 += (bench[i] - km) ** 2;
+  }
+  const corr = (cd1 > EPS && cd2 > EPS) ? cnum / Math.sqrt(cd1 * cd2) : NaN;
+  const act = twr.map((r, i) => r - bench[i]);
+  const am = mean(act);
+  const asd = Math.sqrt(act.reduce((s, r) => s + (r - am) ** 2, 0) / (n - 1));
+  const te = asd * Math.sqrt(12);
+  const ir = te > 0 ? am * 12 / te : NaN;
+  return { beta, alpha, r2, te, ir, corr };
+}
 /*==ENGINE-END==*/
 </script>
 
@@ -391,7 +429,7 @@ function computeStats(sim, rf, market) {
 const $ = id => document.getElementById(id);
 const SERIES_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 const fmt$ = v => "$" + Math.round(v).toLocaleString("en-US");
-const fmtPct = (v, d = 1) => (v >= 0 ? "" : "−") + (Math.abs(v) * 100).toFixed(d) + "%";
+const fmtPct = (v, d = 1) => isFinite(v) ? (v >= 0 ? "" : "−") + (Math.abs(v) * 100).toFixed(d) + "%" : "—";
 const fmtNum = v => isFinite(v) ? v.toFixed(2) : "—";
 const MO_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -652,7 +690,15 @@ function run() {
     r.stats = computeStats(r.sim, rf, market);
   });
 
-  LAST = { runs, startM, endM, initial, contrib };
+  // benchmark-relative stats: the benchmark series is either the dedicated
+  // bench run or a portfolio that is already 100% the benchmark ticker
+  if (benchT) {
+    const benchRun = runs.find(r => r.isBench) ||
+      runs.find(r => r.alloc.length === 1 && r.alloc[0].t === benchT);
+    runs.forEach(r => { r.stats.vs = computeBenchStats(r.sim.twr, benchRun.sim.twr, rf); });
+  }
+
+  LAST = { runs, startM, endM, initial, contrib, benchT };
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     (contrib ? ` · ${fmt$(contrib)}/mo contribution` : "") +
@@ -668,7 +714,7 @@ function run() {
 }
 
 // ----- summary table -----
-function renderSummary({ runs }) {
+function renderSummary({ runs, benchT }) {
   const rows = [
     ["Final balance", r => fmt$(r.sim.balances.at(-1).v)],
     ["CAGR", r => cls(fmtPct(r.stats.cagr, 2), r.stats.cagr)],
@@ -678,9 +724,20 @@ function renderSummary({ runs }) {
     ["Max drawdown", r => cls(fmtPct(r.stats.maxDD), r.stats.maxDD)],
     ["Sharpe ratio", r => fmtNum(r.stats.sharpe)],
     ["Sortino ratio", r => fmtNum(r.stats.sortino)],
-    ["Correlation to SPY", r => fmtNum(r.stats.corr)],
   ];
-  const cls = (txt, v) => `<span class="${v >= 0 ? "pos" : "neg"}">${txt}</span>`;
+  if (benchT) {
+    rows.push(
+      [`Correlation to ${benchT}`, r => fmtNum(r.stats.vs.corr)],
+      [`Beta (vs ${benchT})`, r => fmtNum(r.stats.vs.beta)],
+      ["Alpha (ann.)", r => cls(fmtPct(r.stats.vs.alpha, 2), r.stats.vs.alpha)],
+      ["R²", r => fmtNum(r.stats.vs.r2)],
+      ["Tracking error (ann.)", r => fmtPct(r.stats.vs.te, 2)],
+      ["Information ratio", r => fmtNum(r.stats.vs.ir)],
+    );
+  } else {
+    rows.push(["Correlation to SPY", r => fmtNum(r.stats.corr)]);
+  }
+  const cls = (txt, v) => isFinite(v) ? `<span class="${v >= 0 ? "pos" : "neg"}">${txt}</span>` : txt;
   let h = "<thead><tr><th>Metric</th>" +
     runs.map(r => `<th><span class="legend"><span class="key"><span class="dot" style="background:${r.color}"></span>${r.label}</span></span></th>`).join("") +
     "</tr></thead><tbody>";

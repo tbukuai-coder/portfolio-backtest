@@ -14,7 +14,9 @@ or on GitHub Pages.
 - Start/end month, initial amount, **monthly contributions**, rebalancing
   (monthly / quarterly / semi-annual / annual / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
-  max drawdown, Sharpe, Sortino, correlation to SPY
+  max drawdown, Sharpe, Sortino — plus benchmark-relative stats when a benchmark
+  is selected: correlation, beta, annualized alpha, R², tracking error,
+  information ratio
 - Portfolio growth chart (linear/log), annual returns bars, drawdown chart with
   worst-drawdown episode tables, annual returns table — all with hover tooltips,
   light/dark theme aware
@@ -57,6 +59,11 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
 - Sharpe = mean monthly excess return over the 3-month T-bill ÷ its standard
   deviation, × √12. Sortino replaces the denominator with the downside deviation
   of the same excess returns.
+- Beta, alpha and R² come from a CAPM regression of the portfolio's monthly
+  excess returns (over the 3-month T-bill) on the benchmark's; alpha is
+  annualized geometrically. Tracking error is the annualized standard deviation
+  of monthly active returns (portfolio − benchmark); information ratio is the
+  annualized mean active return ÷ tracking error.
 - Max drawdown is month-end based — intra-month dips are invisible.
 - If a requested start predates any selected asset's history, the period is
   clamped to the earliest common month (noted above the summary).
