@@ -129,6 +129,29 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(Math.abs(st3.balances.at(-1).v - mv) < 1e-6, "step-up balance matches manual reconstruction");
 }
 
+// Tolerance-band rebalancing
+{
+  const s3 = mIdx("2004-01");
+  const bal = [{ t: "SPY", w: 60 }, { t: "AGG", w: 40 }];
+  const eq = (x, y, msg) => {
+    const bx = x.balances.map(b => b.v), by = y.balances.map(b => b.v);
+    assert(Math.max(...bx.map((v, i) => Math.abs(v - by[i]))) < 1e-6, msg);
+  };
+  // band ~0 (any drift triggers) === monthly; band huge === never
+  eq(simulate(bal, s3, endM, 10000, 0, { band: 1e-9 }),
+     simulate(bal, s3, endM, 10000, 0, 1), "band ~0 equals monthly rebalancing");
+  eq(simulate(bal, s3, endM, 10000, 0, { band: 1e9 }),
+     simulate(bal, s3, endM, 10000, 0, 0), "band inf equals never rebalancing");
+  const b5 = simulate(bal, s3, endM, 10000, 0, { band: 5 });
+  const months = endM - s3 + 1;
+  console.log("60/40 5% band:", b5.rebals, "rebalances over", months, "months");
+  assert(b5.rebals >= 3 && b5.rebals < months / 4, "5% band triggers occasionally, not monthly");
+  assert(simulate([{ t: "SPY", w: 100 }], s3, endM, 10000, 0, { band: 5 }).rebals === 0,
+         "single asset never drifts, band never triggers");
+  assert(simulate(bal, s3, endM, 10000, 0, 12).rebals === Math.floor(months / 12),
+         "annual mode counts one rebalance per December");
+}
+
 // Data freshness + shape
 // freshness: the data must end at the previous complete month, or at most one
 // month behind it (a normal mid-month run before the next refresh)

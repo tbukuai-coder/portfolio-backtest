@@ -55,8 +55,11 @@ Node-evaluable.
 - Months are integers: `m = year*12 + (month-1)`; `PV_DATA.series[t].r[i]` is
   the return for month `mIdx(start) + i`. All clamping (earliest common start
   across chosen tickers + CASHX + SPY) happens in `run()`, not in the engine.
-- Rebalancing is calendar-aligned (`(m % 12 + 1) % rebalEvery === 0` → Dec for
-  annual, quarter-ends for quarterly), not anniversary-of-start.
+- Rebalancing is calendar-aligned (`(m % 12 + 1) % every === 0` → Dec for
+  annual, quarter-ends for quarterly), not anniversary-of-start. The rebal arg
+  also accepts `{band: X}` (tolerance band, checked monthly after cashflows);
+  `sim.rebals` counts events in every mode, surfaced as a summary row only in
+  band mode.
 - Cashflows: `simulate()`'s 5th arg is a number ($/mo, back-compat) or
   `{amount, stepUp, rate}` — see the comment above it. The asymmetry is
   deliberate: contributions buy at target weights (mildly rebalancing),

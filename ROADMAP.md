@@ -67,12 +67,15 @@ changes proven in Node before shipping.
       Mon YYYY)" in the summary, post-depletion twr flat 0 to keep series
       aligned (stats past depletion aren't meaningful — the depletion date
       is the answer). Log-scale growth chart clamps zero balances.
-- [ ] **Tolerance-band rebalancing** — rebalance only when a weight drifts
-      more than X% absolute from target. Simpler than feared: weights are
-      `vals[i]/total` inside the existing loop, no exposure needed. Free
-      Node anchors: band 0% ≡ monthly, band ∞ ≡ never. Also surface a
-      rebalance count — "how often does a 5% band trigger" is the question
-      being asked.
+- [x] **Tolerance-band rebalancing** — built 2026-07-19: "Tolerance band"
+      option in the rebalancing select with an X% input (default 5),
+      checked monthly after cashflows; a "Rebalances (X% band)" summary
+      row shows the per-portfolio trigger count. Engine takes
+      `{band: X}` as the rebal arg (numbers unchanged) and returns
+      `rebals` in every mode. Node anchors: band ~0 ≡ monthly and
+      band ∞ ≡ never (exact), single asset never triggers, annual mode
+      counts one per December; 60/40 at 5% → 15 rebalances over 270
+      months.
 - [ ] **Expense/fee drag** — annual ER/advisor fee as a monthly return
       deduction. Five engine lines, endlessly requested. NOTE: fees are a
       real return reduction, so this legitimately DOES change twr — the

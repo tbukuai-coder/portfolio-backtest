@@ -22,7 +22,7 @@ or on GitHub Pages.
   $/month with an optional annual step-up (inflation-adjusted 4%-rule style),
   or withdraw a fixed % of balance per year; unsustainable withdrawals show
   the **depletion month** — and rebalancing (monthly / quarterly /
-  semi-annual / annual / none)
+  semi-annual / annual / **tolerance band** with a rebalance count / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
   max drawdown, longest underwater stretch, Sharpe, Sortino, Calmar, Ulcer index,
   Martin ratio — plus benchmark-relative stats when a benchmark is selected:
@@ -78,7 +78,9 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
   balance, the portfolio is **depleted**: the balance stays at $0, the summary
   flags the depletion month, and stats past that date aren't meaningful.
   Rebalancing happens on calendar boundaries (December for annual,
-  quarter-ends for quarterly).
+  quarter-ends for quarterly), or — in tolerance-band mode — whenever any
+  weight drifts more than X percentage points from target, checked monthly
+  after cashflows; the summary reports how often the band triggered.
 - Sharpe = mean monthly excess return over the 3-month T-bill ÷ its standard
   deviation, × √12. Sortino replaces the denominator with the downside deviation
   of the same excess returns.

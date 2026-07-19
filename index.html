@@ -214,13 +214,18 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="ctl"><label id="cfAmtLabel">Amount ($/month)</label><input type="number" id="cfAmount" value="0" step="100" min="0"></div>
       <div class="ctl"><label>Step-up (%/year)</label><input type="number" id="cfStep" value="0" step="0.5" min="0" title="Grow the monthly amount by this much every January — e.g. inflation-adjusted 4%-rule withdrawals"></div>
       <div class="ctl"><label>Rebalancing</label>
-        <select id="rebal">
-          <option value="12">Annually</option>
-          <option value="6">Semi-annually</option>
-          <option value="3">Quarterly</option>
-          <option value="1">Monthly</option>
-          <option value="0">No rebalancing</option>
-        </select>
+        <div class="pair">
+          <select id="rebal">
+            <option value="12">Annually</option>
+            <option value="6">Semi-annually</option>
+            <option value="3">Quarterly</option>
+            <option value="1">Monthly</option>
+            <option value="band">Tolerance band</option>
+            <option value="0">No rebalancing</option>
+          </select>
+          <input type="number" id="rebalBand" value="5" step="1" min="0.5" style="display:none;width:72px"
+                 title="Rebalance when any weight drifts this many percentage points from target">
+        </div>
       </div>
       <div class="ctl"><label>Benchmark</label><select id="bench"></select></div>
     </div>
@@ -359,9 +364,16 @@ function ret(t, m) {
 // current holdings (no negative sleeves). A fixed withdrawal that exhausts
 // the balance depletes the portfolio: balances stay 0, `depleted` records
 // the month, and later twr entries are 0 (flat) to keep series aligned.
+// rebalEvery: a number (0 never, 1 monthly, N calendar months — Dec for 12,
+// quarter-ends for 3) or {band: X} — rebalance whenever any weight drifts
+// more than X percentage points from target, checked monthly after cashflows.
+// `rebals` in the result counts rebalancing events in every mode.
 function simulate(alloc, startM, endM, initial, cashflow, rebalEvery) {
   const cf = typeof cashflow === "object" && cashflow !== null
     ? cashflow : { amount: cashflow || 0 };
+  const rb = typeof rebalEvery === "object" && rebalEvery !== null
+    ? rebalEvery : { every: rebalEvery || 0 };
+  let rebals = 0;
   let amt = cf.amount || 0;
   let vals = alloc.map(a => initial * a.w / 100);
   const twr = [], balances = [{ m: startM - 1, v: initial }];
@@ -381,13 +393,21 @@ function simulate(alloc, startM, endM, initial, cashflow, rebalEvery) {
       if (v1 + amt <= 0) { vals = alloc.map(() => 0); depleted ??= m; }
       else { const f = 1 + amt / v1; for (let i = 0; i < alloc.length; i++) vals[i] *= f; }
     }
-    if (rebalEvery === 1 || (rebalEvery > 1 && (m % 12 + 1) % rebalEvery === 0)) {
+    let doRebal = false;
+    if (rb.band > 0) {
+      const vTot = vals.reduce((s, x) => s + x, 0);
+      doRebal = vTot > 0 && alloc.some((a, i) => Math.abs(vals[i] / vTot * 100 - a.w) > rb.band);
+    } else {
+      doRebal = rb.every === 1 || (rb.every > 1 && (m % 12 + 1) % rb.every === 0);
+    }
+    if (doRebal) {
       v1 = vals.reduce((s, x) => s + x, 0);
       for (let i = 0; i < alloc.length; i++) vals[i] = v1 * alloc[i].w / 100;
+      rebals++;
     }
     balances.push({ m, v: vals.reduce((s, x) => s + x, 0) });
   }
-  return { twr, balances, startM, endM, depleted };
+  return { twr, balances, startM, endM, depleted, rebals };
 }
 
 function computeStats(sim, rf, market) {
@@ -743,6 +763,7 @@ $("cfMode").onchange = () => {
   $("cfStep").disabled = !m || m === "wdpct";   // %-of-balance self-adjusts; no step-up
 };
 $("cfMode").onchange();
+$("rebal").onchange = () => { $("rebalBand").style.display = $("rebal").value === "band" ? "" : "none"; };
 let LAST = null;
 
 function run() {
@@ -788,7 +809,9 @@ function run() {
     cashflow.rate ? ` · ${cfAmt}%/yr withdrawal (of balance)` :
     cashflow.amount > 0 ? ` · ${fmt$(cfAmt)}/mo contribution${cfStep ? ` (+${cfStep}%/yr)` : ""}` :
     cashflow.amount < 0 ? ` · ${fmt$(cfAmt)}/mo withdrawal${cfStep ? ` (+${cfStep}%/yr)` : ""}` : "";
-  const rebal = +$("rebal").value;
+  const bandMode = $("rebal").value === "band";
+  const band = Math.max(0.5, +$("rebalBand").value || 5);
+  const rebal = bandMode ? { band } : +$("rebal").value;
 
   const rf = [], market = [];
   for (let m = startM; m <= endM; m++) { rf.push(ret("CASHX", m)); market.push(ret("SPY", m)); }
@@ -806,10 +829,11 @@ function run() {
     runs.forEach(r => { r.stats.vs = computeBenchStats(r.sim.twr, benchRun.sim.twr, rf); });
   }
 
-  LAST = { runs, startM, endM, initial, benchT };
+  LAST = { runs, startM, endM, initial, benchT, band: bandMode ? band : null };
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
     cfNote +
+    (bandMode ? ` · ${band}% tolerance-band rebalancing` : "") +
     (clamped ? ` · start clamped to earliest data for ${clamped}` : "") +
     (endClamp ? ` · end clamped to last data for ${endClamp}` : "");
   renderSummary(LAST);
@@ -824,7 +848,7 @@ function run() {
 }
 
 // ----- summary table -----
-function renderSummary({ runs, benchT }) {
+function renderSummary({ runs, benchT, band }) {
   const rows = [
     ["Final balance", r => fmt$(r.sim.balances.at(-1).v) +
       (r.sim.depleted ? ` <span class="neg">(depleted ${mLabel(r.sim.depleted)})</span>` : "")],
@@ -844,6 +868,7 @@ function renderSummary({ runs, benchT }) {
     ["Ulcer index", r => fmtPct(r.stats.ulcer, 2)],
     ["Martin ratio", r => fmtNum(r.stats.martin)],
   ];
+  if (band) rows.push([`Rebalances (${band}% band)`, r => String(r.sim.rebals)]);
   if (benchT) {
     rows.push(
       [`Correlation to ${benchT}`, r => fmtNum(r.stats.vs.corr)],
