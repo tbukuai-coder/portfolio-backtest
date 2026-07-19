@@ -180,6 +180,38 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
          "full-window rolling Sharpe = summary Sharpe");
 }
 
+// Return distribution histogram
+{
+  // symmetric sample: counts conserved, mean = median = center, skew ~ 0
+  const sym = [];
+  for (let i = 0; i < 50; i++) { sym.push(0.01 + i * 0.001); sym.push(0.01 - i * 0.001); }
+  const hs = returnHistogram(sym);
+  assert(hs.bins.reduce((s, b) => s + b.count, 0) === sym.length, "histogram counts sum to n");
+  assert(Math.abs(hs.mean - 0.01) < 1e-12 && Math.abs(hs.median - 0.01) < 1e-12,
+         "symmetric sample -> mean = median = center");
+  assert(Math.abs(hs.skew) < 1e-9, "symmetric sample -> skew ~ 0");
+  assert(hs.bins.every(b => Math.abs(b.lo / hs.width - Math.round(b.lo / hs.width)) < 1e-9),
+         "bin edges aligned to integer multiples of the width");
+  // exact-edge values land in their proper bin (0.03/0.01 = 2.9999...96 in floats)
+  const he = returnHistogram([0.005, 0.015, 0.03, 0.03]);
+  assert(he.bins.find(b => Math.abs(b.lo - 0.03) < 1e-12).count === 2,
+         "exact-edge value bins upward, not into the bin below");
+  // one deep loss in a calm series -> strongly negative skew
+  assert(returnHistogram(Array(30).fill(0.01).concat([-0.15])).skew < -3,
+         "single deep loss -> strongly negative skew");
+  // constant series: a single bin, zero variance -> skew NaN
+  const flat = returnHistogram(Array(24).fill(0.005));
+  assert(flat.bins.length === 1 && flat.bins[0].count === 24, "constant series -> one bin holding all months");
+  assert(Number.isNaN(flat.skew), "zero variance -> skew NaN");
+  // SPY since 1994: left-skewed, bounded bin count, zero on an edge
+  const hspy = returnHistogram(spy.twr);
+  console.log("SPY monthly skew", hspy.skew.toFixed(2), "bins", hspy.bins.length, "width", hspy.width);
+  assert(hspy.skew < 0, "SPY monthly returns are left-skewed");
+  assert(hspy.bins.length <= 25, "bin-width ladder keeps <= ~24 bins");
+  assert(hspy.bins.some(b => Math.abs(b.lo) < 1e-12), "zero falls on a bin edge");
+  assert(hspy.bins.reduce((s, b) => s + b.count, 0) === spy.twr.length, "SPY histogram counts sum to n");
+}
+
 // Tolerance-band rebalancing
 {
   const s3 = mIdx("2004-01");

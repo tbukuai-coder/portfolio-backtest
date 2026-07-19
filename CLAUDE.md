@@ -15,8 +15,8 @@ serverless). `index.html` holds everything else in two `<script>` blocks: the
 **engine block** (pure functions between `/*==ENGINE-START==*/` and
 `/*==ENGINE-END==*/` — month arithmetic, `simulate()`, `computeStats()` incl.
 Ulcer/Martin/Calmar/underwater, `rollingCAGR()`, `rollingSharpe()`,
-`moneyWeightedReturn()`, `computeBenchStats()` incl. up/down capture,
-`corrMatrix()`, `monteCarlo()` + `mulberry32()` seeded PRNG) and the
+`moneyWeightedReturn()`, `returnHistogram()`, `computeBenchStats()` incl.
+up/down capture, `corrMatrix()`, `monteCarlo()` + `mulberry32()` seeded PRNG) and the
 **app block** (DOM, form handling, SVG chart rendering). The marker comments are
 load-bearing: `tests/sanity.js` evals both blocks in Node. Don't rename or
 remove them, and keep the engine block free of DOM references so it stays
@@ -34,7 +34,7 @@ Node-evaluable.
   publishes the data). Foreign listings additionally need the 4-tuple + the
   identity/gap/garbage-print probes (see Conventions).
 - **Engine or data changes must pass `node tests/sanity.js` before shipping**
-  (167 assertions at last count; it evals `data.js` + the engine block,
+  (179 assertions at last count; it evals `data.js` + the engine block,
   replacing `const PV_DATA` with `var` first — `const` inside `eval` doesn't
   escape to the caller's scope). Extend it when you add a metric or an asset.
   Known-good anchors it pins: SPY 100% from 1994-01 → CAGR ≈ 10.9%, max
@@ -125,6 +125,15 @@ Node-evaluable.
   Post-depletion months (zero flow, zero balance) are trimmed first for the
   same reason. The summary row renders only when a cashflow mode is active
   (without cashflows MWR ≡ CAGR, so the row would be noise).
+- Return distribution: `returnHistogram()` picks the bin width from a nice-step
+  ladder (0.25%…5%) targeting ≤ 24 bins, with edges aligned to width multiples
+  so 0% is always an edge (the card draws a dashed rule there); binning nudges
+  by 1e-9 so exact-edge values (0.03/0.01 = 2.9999…96 in floats) land in the
+  upper bin, and the skew guard is `sd > 1e-12`, not `> 0` — a constant series
+  leaves ~1e-18 of float noise. Bars are single-hue in the selected
+  portfolio's series color (`distIdx` selector, same pattern as the heatmap);
+  count labels are muted-ink 10.5px text — the render test tells them apart
+  from axis labels by that font size.
 - Monthly heatmap: diverging blue↔red fill via
   `color-mix(in oklab, var(--hm-pos|--hm-neg) t%, var(--hm-mid))`, saturating
   at ±8%/mo. The `--hm-*` poles are per-theme (darker in dark mode so white

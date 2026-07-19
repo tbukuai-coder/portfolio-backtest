@@ -62,10 +62,13 @@ history and `CLAUDE.md`.
       table; `rollingSharpe()` is NaN for zero-variance windows (pure cash),
       the chart lifts the pen and the table renders "—". Anchors: alternating
       excess → Sharpe = √11 exactly; full-sample window = summary Sharpe.
-- [ ] **Return distribution histogram** — monthly-return histogram per
-      portfolio (single-hue bars, count labels), with mean/median/skew
-      readouts. Lower priority: the heatmap already tells most of this
-      story.
+- [x] **Return distribution histogram** — built 2026-07-19:
+      `returnHistogram(twr)` (bin-width ladder targeting ≤ 24 bins, edges
+      aligned so 0 is always an edge, adjusted Fisher–Pearson skew) + a card
+      after the heatmap: portfolio selector, single-hue bars in the
+      portfolio's series color with count labels, dashed 0% rule,
+      mean/median/skew/% -positive readouts. Anchors: counts conserved,
+      symmetric → skew 0, constant → one bin + NaN skew, SPY ≈ −0.55 skew.
 
 ## Simulation features
 

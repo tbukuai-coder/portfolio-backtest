@@ -38,7 +38,9 @@ or on GitHub Pages.
   worst-drawdown episode tables, rolling returns (1/3/5/10-year window toggle,
   a **return ↔ Sharpe metric toggle**,
   plus a best/worst/average table across all windows), monthly returns heatmap
-  (year × month, diverging blue↔red fill with a portfolio selector), asset
+  (year × month, diverging blue↔red fill with a portfolio selector), **return
+  distribution histogram** (monthly returns binned per portfolio, count labels,
+  mean/median/skew readouts), asset
   correlation matrix (the backtest's assets over its window), **Monte Carlo
   projection** (1,000 block-bootstrap paths from the backtest's final balance
   over a 1–60y horizon, percentile fan + survival rate under withdrawals),

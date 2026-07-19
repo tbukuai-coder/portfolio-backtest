@@ -316,6 +316,15 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="scrollx"><table id="hmTable" class="heatmap"></table></div>
     </div>
 
+    <div class="card">
+      <div class="chart-head">
+        <h2>Return distribution <span class="note">(monthly)</span></h2>
+        <span class="seg" id="distPorts"></span>
+      </div>
+      <div class="legend"><span class="note" id="distStats"></span></div>
+      <div class="chartbox" id="distChart"></div>
+    </div>
+
     <div class="card" id="corrCard">
       <h2>Asset correlations <span class="note">(monthly returns over the backtest window)</span></h2>
       <div class="scrollx"><table id="corrTable" class="heatmap"></table></div>
@@ -357,7 +366,9 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
     average return across the benchmark's up (down) months ÷ the benchmark's own average in those months. Max drawdown is month-end based
     (intra-month dips are invisible); longest underwater is the peak-to-recovery span of the longest
     drawdown episode. Calmar = CAGR ÷ |max drawdown|; Ulcer index = RMS of the monthly drawdown series;
-    Martin ratio = annualized mean excess return ÷ Ulcer index.
+    Martin ratio = annualized mean excess return ÷ Ulcer index. The return-distribution card's skew is
+    adjusted Fisher–Pearson sample skewness of the monthly returns (negative = left tail, i.e. crash months
+    reach further than rally months).
     Educational tool — not investment advice.
   </footer>
 </div>
@@ -570,6 +581,31 @@ function rollingSharpe(twr, rf, w) {
     out.push(sd > 0 ? mean / sd * Math.sqrt(12) : NaN);
   }
   return out;
+}
+
+// Histogram of monthly returns plus distribution readouts. Bin width comes
+// from a nice-step ladder (0.25%…5%, 10% fallback) targeting ≤ 24 bins;
+// edges align to integer multiples of the width, so 0 always falls on an
+// edge. Skew is adjusted Fisher–Pearson sample skewness (NaN for n < 3 or
+// zero variance). The 1e-9 nudge keeps exact-edge values (0.03/0.01 =
+// 2.9999…96 in floats) in their proper bin.
+function returnHistogram(twr) {
+  const n = twr.length;
+  const sorted = [...twr].sort((a, b) => a - b);
+  const mean = twr.reduce((s, r) => s + r, 0) / n;
+  const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  const sd = n > 1 ? Math.sqrt(twr.reduce((s, r) => s + (r - mean) ** 2, 0) / (n - 1)) : 0;
+  // sd > 1e-12: a constant series leaves ~1e-18 of float noise, not exact 0
+  const skew = n > 2 && sd > 1e-12
+    ? n / ((n - 1) * (n - 2)) * twr.reduce((s, r) => s + ((r - mean) / sd) ** 3, 0) : NaN;
+  const span = sorted[n - 1] - sorted[0];
+  const width = [0.0025, 0.005, 0.01, 0.02, 0.05].find(wd => span / wd <= 24) || 0.1;
+  const k0 = Math.floor(sorted[0] / width + 1e-9), k1 = Math.floor(sorted[n - 1] / width + 1e-9);
+  const bins = Array.from({ length: k1 - k0 + 1 },
+    (_, i) => ({ lo: (k0 + i) * width, hi: (k0 + i + 1) * width, count: 0 }));
+  for (const r of twr)
+    bins[Math.min(k1 - k0, Math.max(0, Math.floor(r / width + 1e-9) - k0))].count++;
+  return { bins, width, mean, median, sd, skew };
 }
 
 // deterministic PRNG for reproducible Monte Carlo (and Node assertions)
@@ -1016,6 +1052,7 @@ function run() {
   drawDrawdowns(LAST);
   drawRolling(LAST);
   renderHeatmap(LAST);
+  renderDist(LAST);
   renderCorr(LAST);
   drawMC(LAST);
   renderAnnualTable(LAST);
@@ -1519,6 +1556,71 @@ function renderHeatmap({ runs, startM }) {
          `<td><span class="${t >= 0 ? "pos" : "neg"}">${fmtPct(t)}</span></td></tr>`;
   });
   $("hmTable").innerHTML = h + "</tbody>";
+}
+
+// ----- return distribution histogram -----
+let distIdx = 0;
+
+function renderDist({ runs }) {
+  if (distIdx >= runs.length) distIdx = 0;
+  $("distPorts").innerHTML = runs.map((r, i) =>
+    `<button class="${i === distIdx ? "active" : ""}" data-i="${i}"><span class="dot" style="background:${r.color}"></span>${r.label}</button>`).join("");
+  $("distPorts").querySelectorAll("button").forEach(b =>
+    b.onclick = () => { distIdx = +b.dataset.i; renderDist(LAST); });
+
+  const r = runs[distIdx];
+  const n = r.sim.twr.length;
+  const h = returnHistogram(r.sim.twr);
+  const pos = r.sim.twr.filter(v => v > 0).length;
+  $("distStats").innerHTML =
+    `mean <b>${fmtPct(h.mean, 2)}</b> · median <b>${fmtPct(h.median, 2)}</b> · ` +
+    `skew <b>${fmtNum(h.skew)}</b> · ${pos} of ${n} months positive`;
+
+  const box = $("distChart");
+  box.innerHTML = "";
+  const W = 1000, H = 300, PAD = { l: 56, r: 20, t: 26, b: 34 };   // t leaves room for count labels
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  const maxC = Math.max(...h.bins.map(b => b.count));
+  const Y = c => PAD.t + (maxC - c) / (maxC || 1) * (H - PAD.t - PAD.b);
+  const bw = (W - PAD.l - PAD.r) / h.bins.length;
+  const X = i => PAD.l + i * bw;
+
+  const yTicks = niceTicks(0, maxC, 4).filter(v => Number.isInteger(v)).map(v => ({ y: Y(v), v }));
+  const edgeDec = h.width < 0.01 ? 1 : 0;
+  const eStep = Math.ceil((h.bins.length + 1) / 13);
+  const xTicks = [];
+  for (let i = 0; i <= h.bins.length; i += eStep)
+    xTicks.push({ x: X(i), v: i === h.bins.length ? h.bins[i - 1].hi : h.bins[i].lo });
+  axisFrame(svg, W, H, PAD, yTicks, v => v, xTicks, v => fmtPct(v, edgeDec), H - PAD.b);
+
+  // dashed rule on the 0% edge (bin edges are aligned, so it exists when data spans 0)
+  const zi = h.bins.findIndex(b => Math.abs(b.lo) < 1e-12);
+  if (zi > 0) svg.append(el("line", { x1: X(zi), x2: X(zi), y1: PAD.t, y2: H - PAD.b,
+    stroke: "var(--baseline)", "stroke-width": 1, "stroke-dasharray": "3 3" }));
+
+  const tipDec = h.width < 0.01 ? 2 : 1;
+  const tip = tooltipFor(box);
+  h.bins.forEach((b, i) => {
+    if (!b.count) return;
+    const x = X(i) + 1, w2 = Math.max(1, bw - 2);   // 2px gap between adjacent bars
+    const y1 = Y(b.count), y0 = H - PAD.b;
+    const bh = Math.max(1.5, y0 - y1), rr = Math.min(4, bh);
+    const d = `M${x} ${y0}V${y0 - bh + rr}Q${x} ${y0 - bh} ${x + rr} ${y0 - bh}H${x + w2 - rr}Q${x + w2} ${y0 - bh} ${x + w2} ${y0 - bh + rr}V${y0}Z`;
+    const bar = el("path", { d, fill: r.color });
+    bar.addEventListener("pointerenter", e => {
+      tip.innerHTML = `<div class="t-title">${fmtPct(b.lo, tipDec)} to ${fmtPct(b.hi, tipDec)}</div>` +
+        `<div class="row"><span class="dot" style="background:${r.color}"></span>${b.count} month${b.count > 1 ? "s" : ""}<span class="val">${fmtPct(b.count / n, 1)}</span></div>`;
+      const bb = box.getBoundingClientRect();
+      placeTip(tip, box, e.clientX - bb.left, e.clientY - bb.top);
+    });
+    bar.addEventListener("pointerleave", () => tip.style.display = "none");
+    svg.append(bar);
+    const t = el("text", { x: x + w2 / 2, y: y0 - bh - 5, "text-anchor": "middle",
+                           fill: "var(--muted)", "font-size": 10.5 });
+    t.textContent = b.count;
+    svg.append(t);
+  });
+  box.append(svg);
 }
 
 // ----- asset correlations -----
