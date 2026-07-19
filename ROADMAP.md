@@ -11,17 +11,19 @@ history and `CLAUDE.md`.
 
 ## Near-term polish
 
-- [x] **Shareable URLs** — built 2026-07-19: `encodeState()`/`applyHash()`;
-      every run (and MC-horizon change) `history.replaceState`s the full
-      form into the hash — allocations, dates, initial, cashflow, fee,
-      rebalancing incl. band, benchmark, MC horizon, custom tickers by
-      SYMBOL only (never the key). On load a hash auto-populates and runs;
-      custom tickers auto-fetch when a key is stored, otherwise the page
-      prompts. Round-trip verified: restored page reproduces the identical
-      summary and re-serializes to the identical hash.
 - [ ] **Preset portfolios dropdown** — 60/40, Three-Fund, All Weather,
       Permanent Portfolio, Golden Butterfly next to `#exampleBtn`. All
-      constituents are already in the universe; it's just named weight sets.
+      constituents are already in the universe (incl. AVUV/SHY for the
+      Golden Butterfly); it's just named weight sets.
+- [ ] **Copy-link button** — clipboard-copy the current shareable URL with a
+      brief "copied ✓" confirmation next to Run. The hash already carries
+      the whole form; this just makes it discoverable (few users notice a
+      changing location bar).
+- [ ] **Crisis-window presets** — a small "notable windows" select that sets
+      start/end and re-runs: dot-com (2000–2002), GFC (Oct 2007–Feb 2009),
+      2013 taper, 2022 rate shock, and "last 10y". Cheap: it only drives
+      the existing date selects; clamping notes already handle assets that
+      are too young for a window.
 - [ ] **Saved portfolio sets** — name and save the current form to
       localStorage, recall from a dropdown. Pairs with shareable URLs
       (URLs for sharing out, saves for personal reuse).
@@ -45,49 +47,58 @@ history and `CLAUDE.md`.
 
 ## Metrics & analytics (all feed on `sim.twr`)
 
-- [x] **Money-weighted return (IRR)** — built 2026-07-19:
-      `moneyWeightedReturn(sim)` recovers the actual monthly flows from the
-      sim (`flow = bal − prevBal·(1+twr)`, so rate-mode and depletion-capped
-      amounts come out exactly), then bisects the future-value (Horner) form
-      of NPV — the discounted form underflows near rate = −1. Summary row
-      beside CAGR whenever a cashflow mode is on. Anchors: no cashflows →
-      MWR = CAGR; constant 1%/mo → IRR exactly 1%/mo regardless of flows;
-      DCA over 1994→2009 (front-loaded returns) → MWR < TWR; depleted and
-      %-mode runs stay finite (post-depletion dead months are trimmed).
-- [x] **Up/down capture ratios** — built 2026-07-19 in `computeBenchStats`
-      (sum-ratio form; raw returns, not excess). Two summary rows next to
-      beta. Anchored: SPY vs SPY = 100/100 exactly, 60/40 ≈ 66/60.
-- [x] **Rolling Sharpe toggle** — built 2026-07-19: Return ↔ Sharpe segmented
-      toggle on the rolling card, same windows, same best/worst/average
-      table; `rollingSharpe()` is NaN for zero-variance windows (pure cash),
-      the chart lifts the pen and the table renders "—". Anchors: alternating
-      excess → Sharpe = √11 exactly; full-sample window = summary Sharpe.
-- [x] **Return distribution histogram** — built 2026-07-19:
-      `returnHistogram(twr)` (bin-width ladder targeting ≤ 24 bins, edges
-      aligned so 0 is always an edge, adjusted Fisher–Pearson skew) + a card
-      after the heatmap: portfolio selector, single-hue bars in the
-      portfolio's series color with count labels, dashed 0% rule,
-      mean/median/skew/% -positive readouts. Anchors: counts conserved,
-      symmetric → skew 0, constant → one bin + NaN skew, SPY ≈ −0.55 skew.
+- [ ] **Rolling beta toggle** — third metric on the rolling card; the
+      Return ↔ Sharpe scaffolding (metric switch, NaN pen-lift, per-metric
+      table) already exists, so this is one `rollingBeta(twr, bench, rf, w)`
+      plus a button. Hidden when benchmark is "None". Node anchors:
+      SPY vs SPY → exactly 1 in every window; full-sample window = the
+      summary beta.
+- [ ] **VaR / CVaR summary rows** — historical monthly 95% VaR (5th
+      percentile of monthly returns) and CVaR (mean of the months at or
+      below it), the standard "how bad is a bad month" pair the drawdown
+      stats don't cover. Node anchors: CVaR ≤ VaR always; constant series →
+      both equal that return; SPY 95% VaR ≈ −8%/mo.
+- [ ] **Gain-to-pain ratio** — Σ of positive months ÷ |Σ of negative
+      months| (Schwager's gain-to-pain; equivalently Omega(0) − 1 scaled).
+      One summary row. Node anchors: symmetric alternating series → exactly
+      computable; an all-positive series → "—" (NaN guard, not Infinity).
+- [ ] **Per-asset return attribution** — how much of each portfolio's
+      growth came from each sleeve: `simulate()` already tracks per-asset
+      dollar values, so have it also accumulate per-asset P&L and render a
+      small table (asset, avg weight, contribution to CAGR). Node anchors:
+      single-asset → 100% of total; contributions sum to the portfolio
+      total exactly.
+- [ ] **Cumulative active-return chart** — a relative-strength line
+      (portfolio TWR index ÷ benchmark index − 1) per portfolio, showing
+      *when* out/underperformance happened rather than just the net alpha
+      number. Hidden without a benchmark; the aligned series already exist
+      in the `vs` pipeline. Node anchor: SPY vs SPY → flat 0 line.
+- [ ] **Streaks readout** — longest winning and losing streak (months, with
+      dates) on the return-distribution card next to mean/median/skew.
+      Trivial scan over `sim.twr`; anchors are exact on synthetic series.
 
 ## Simulation features
 
-- [x] **Monte Carlo goal metrics** — built 2026-07-19: `monteCarlo()` now
-      also returns `alive` (per-month surviving fraction) and `yearEnds`
-      (references to the already-sorted per-month path arrays at year
-      boundaries) — same paths, no new resampling. The card gained a
-      10/20/30y+horizon percentile table (read straight off the bands), a
-      goal input ("chance of ≥ $X by year Y" via binary search on
-      `yearEnds`, cached in `MC_CTX` so typing doesn't re-resample, `g=`
-      in the hash), and a survival-vs-year curve shown only for fixed-$
-      withdrawals. Anchors: alive-at-horizon = survival exactly, curve
-      monotone non-increasing, year-end median = band median.
 - [ ] **Turnover & rebalancing cost** — report average annual turnover
       (Σ|trades| ÷ balance at each rebalance) per portfolio, with an
       optional cost-per-rebalance (bps) input that debits the balance like
       a fee. Makes calendar-vs-band comparisons honest about trading
       friction. Care: cost debit is a real return reduction (fee-style,
       inside twr), not a cashflow.
+- [ ] **Safe-withdrawal solver** — invert the goal metrics: bisect the
+      fixed $/mo withdrawal so projection survival ≥ a target (90%
+      default) at the current horizon, shown beside the survival note
+      ("max sustainable ≈ $X/mo"). Survival is monotone in the amount and
+      the seed is fixed, so the solver is deterministic and assertable.
+      Reuses `monteCarlo()` as-is (~10 bisection runs, still fast).
+- [ ] **Contribution goal solver** — the accumulation inverse: bisect the
+      monthly contribution so P(balance ≥ $X at year Y) ≥ p%, filling the
+      goal row's natural follow-up question ("what would it take?"). Same
+      bisection harness as the safe-withdrawal solver; build them together.
+- [ ] **Lump-sum vs DCA comparator** — same window, invest everything at
+      t0 vs. spread over N months (cash earns CASHX while waiting): PV-style
+      side-by-side final balances and MWR. All plumbing exists via cashflow
+      modes; mostly a UI mode plus one sanity anchor (N=1 ≡ lump sum).
 
 ## Data & universe (all via `refresh_data.py`)
 
@@ -125,6 +136,19 @@ history and `CLAUDE.md`.
 
 ## Shipped (2026-07, condensed)
 
+- [x] Monte Carlo goal metrics: 10/20/30y percentile table, "chance of
+      ≥ $X by year Y" input (`g=` in the hash), survival-vs-year curve —
+      2026-07-19.
+- [x] Return distribution histogram card: adaptive bins, count labels,
+      mean/median/skew readouts — 2026-07-19.
+- [x] Money-weighted return (IRR) beside CAGR whenever cashflows are on
+      (future-value bisection; see CLAUDE.md for the underflow trap) —
+      2026-07-19.
+- [x] Up/down capture ratios next to beta; SPY-vs-SPY = 100/100 exactly —
+      2026-07-19.
+- [x] Rolling Sharpe toggle on the rolling-returns card — 2026-07-19.
+- [x] Shareable URLs: full form state in the location hash, custom tickers
+      by symbol only, round-trip verified — 2026-07-19.
 - [x] Custom tickers via runtime Twelve Data API, user's own free key
       (2026-07-18; provider gates in `DATA-API-PLAN.md`; compatibility
       re-verified 2026-07-19 after everything below).
