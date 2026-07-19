@@ -53,11 +53,28 @@ history and `CLAUDE.md`.
       plus a button. Hidden when benchmark is "None". Node anchors:
       SPY vs SPY → exactly 1 in every window; full-sample window = the
       summary beta.
+- [ ] **Endpoint-sensitivity flag** — recompute the portfolios' final-balance
+      ranking with the last 6 months of the window dropped (no new sims:
+      truncate each `sim.twr` and re-product); if the order flips, badge the
+      summary with "ranking depends on the last N months". Born from a real
+      review: MTUM vs a value tilt looked decisive over 2020–2026 but the
+      entire win was Jan–Jun 2026 — the app should catch that, not the
+      reviewer. Node anchors: exact on synthetic series where the flip
+      month is known; identical ranking → no badge.
 - [ ] **VaR / CVaR summary rows** — historical monthly 95% VaR (5th
       percentile of monthly returns) and CVaR (mean of the months at or
       below it), the standard "how bad is a bad month" pair the drawdown
       stats don't cover. Node anchors: CVaR ≤ VaR always; constant series →
       both equal that return; SPY 95% VaR ≈ −8%/mo.
+- [ ] **Cross-portfolio tilt correlation** — with ≥ 2 portfolios and a
+      benchmark, correlate the portfolios' *active*-return streams
+      (each minus benchmark) pairwise and show it near the correlation
+      matrix; when a pair sits below ~0.2, note "complementary tilts —
+      consider blending into a free column". This decided a real
+      value-vs-momentum review (active corr −0.09 → the 50/50 blend beat
+      both on drawdown at equal Sharpe); today the `backtest-review` skill
+      computes it by hand. Node anchors: portfolio vs itself → 1; SPY vs
+      the benchmark leg → NaN (zero-variance active stream, render "—").
 - [ ] **Gain-to-pain ratio** — Σ of positive months ÷ |Σ of negative
       months| (Schwager's gain-to-pain; equivalently Omega(0) − 1 scaled).
       One summary row. Node anchors: symmetric alternating series → exactly
@@ -136,6 +153,10 @@ history and `CLAUDE.md`.
 
 ## Shipped (2026-07, condensed)
 
+- [x] `backtest-review` Claude Code skill shipped in-repo
+      (`.claude/skills/`): decode a shared URL, reproduce it headlessly
+      through the engine block in Node, add controls, run robustness
+      checks, deliver a verdict — 2026-07-19.
 - [x] Monte Carlo goal metrics: 10/20/30y percentile table, "chance of
       ≥ $X by year Y" input (`g=` in the hash), survival-vs-year curve —
       2026-07-19.
