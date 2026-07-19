@@ -54,24 +54,38 @@ changes proven in Node before shipping.
       theme vars, saturating at ±8%/mo; exact numbers stay in every cell in
       ink tokens.
 
-## Simulation features
+## Simulation features (ordered by value per effort)
 
-- [ ] **Withdrawal mode** — negative contributions: fixed monthly/annual
-      withdrawal, or fixed percentage. Enables SWR-style experiments and is
-      the mirror image of the existing contribution code path. Withdrawals
-      must not touch the TWR series, same as contributions.
-- [ ] **Contribution step-up** — grow the monthly contribution by N%/year
-      (or by embedded CPI once that lands).
+- [x] **Cashflows: withdrawals + step-up + depletion** — built 2026-07-19
+      as one batch (step-up is half of the 4%-rule, not a contribution
+      nicety). Cashflow modes: contribute $/mo, withdraw $/mo (both with
+      N%/yr January step-up), withdraw % of balance per year (taken
+      monthly, never depletes). Contributions buy at target weights;
+      withdrawals sell pro-rata from current holdings, so withdrawal TWR
+      invariance is exact even multi-asset. A fixed withdrawal that
+      exhausts the balance depletes: balance pinned to 0, "(depleted
+      Mon YYYY)" in the summary, post-depletion twr flat 0 to keep series
+      aligned (stats past depletion aren't meaningful — the depletion date
+      is the answer). Log-scale growth chart clamps zero balances.
 - [ ] **Tolerance-band rebalancing** — rebalance only when a weight drifts
-      more than X% absolute from target, as an alternative to the calendar
-      schedule. Needs care in the engine block: bands read current weights,
-      which the calendar path never has to expose.
-- [ ] **Asset correlation matrix page** — full pairwise correlations over
-      the chosen window; all the data is already client-side. Could live
-      behind a tab rather than a second file.
-- [ ] **Monte Carlo projection** — bootstrap resampling of the portfolio's
-      own monthly TWR to fan out forward wealth percentiles. Deterministic
-      seed so re-runs are reproducible and the Node sanity check stays
+      more than X% absolute from target. Simpler than feared: weights are
+      `vals[i]/total` inside the existing loop, no exposure needed. Free
+      Node anchors: band 0% ≡ monthly, band ∞ ≡ never. Also surface a
+      rebalance count — "how often does a 5% band trigger" is the question
+      being asked.
+- [ ] **Expense/fee drag** — annual ER/advisor fee as a monthly return
+      deduction. Five engine lines, endlessly requested. NOTE: fees are a
+      real return reduction, so this legitimately DOES change twr — the
+      one deliberate exception to the cashflow-invariance rule.
+- [ ] **Asset correlation matrix** — scope to the assets in the current
+      backtest (portfolio constituents + benchmark, ≤ ~10) over the
+      clamped window, NOT all 58 embedded assets. Render as a table with
+      the heatmap's diverging `--hm-*` ramp (correlations are signed).
+- [ ] **Monte Carlo projection** — build AFTER withdrawals-aware framing:
+      with cashflows it's a retirement planner ("N% of resampled histories
+      survived 30 years"), without them just a fan chart. Use block
+      bootstrap (consecutive-month runs) to preserve volatility
+      clustering, deterministic seed so the Node sanity check stays
       assertable.
 
 ## Data & universe (all via `refresh_data.py`)

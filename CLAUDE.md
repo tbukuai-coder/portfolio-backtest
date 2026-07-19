@@ -56,8 +56,16 @@ Node-evaluable.
   the return for month `mIdx(start) + i`. All clamping (earliest common start
   across chosen tickers + CASHX + SPY) happens in `run()`, not in the engine.
 - Rebalancing is calendar-aligned (`(m % 12 + 1) % rebalEvery === 0` → Dec for
-  annual, quarter-ends for quarterly), not anniversary-of-start. Contributions
-  are added at month-end at target weights.
+  annual, quarter-ends for quarterly), not anniversary-of-start.
+- Cashflows: `simulate()`'s 5th arg is a number ($/mo, back-compat) or
+  `{amount, stepUp, rate}` — see the comment above it. The asymmetry is
+  deliberate: contributions buy at target weights (mildly rebalancing),
+  withdrawals sell pro-rata (weight-preserving, so withdrawal TWR invariance
+  is exact even multi-asset; contribution invariance is single-asset only).
+  Depletion pins the balance to 0 and pushes twr = 0 afterward — series stay
+  aligned, stats past depletion are knowingly meaningless, and the summary's
+  "(depleted Mon YYYY)" is the headline. The log-scale growth chart clamps
+  zero balances to the smallest positive value.
 - CASHX is derived from ^IRX (13-week T-bill): monthly rf =
   `(1 + yield/100)^(1/12) − 1`. It doubles as the Sharpe/Sortino risk-free leg.
 - Foreign listings (Malaysia group) use 4-tuple `UNIVERSE` entries

@@ -92,6 +92,43 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(Number.isNaN(cash.beta), "cash benchmark -> beta NaN (rendered as em dash)");
 }
 
+// Cashflows: withdrawals, step-up, percent mode, depletion
+{
+  const s2 = mIdx("2004-01");
+  const bal6040 = [{ t: "SPY", w: 60 }, { t: "AGG", w: 40 }];
+  // pro-rata withdrawals preserve weights -> TWR identical even multi-asset
+  const a = simulate(bal6040, s2, endM, 10000, 0, 12).twr;
+  const b = simulate(bal6040, s2, endM, 10000, { amount: -30 }, 12).twr;
+  assert(Math.max(...a.map((v, i) => Math.abs(v - b[i]))) < 1e-12,
+         "pro-rata withdrawal leaves multi-asset TWR unchanged");
+  // percent-of-balance: TWR unchanged, balance = product of (1+r)(1-rate/12)
+  const pc = simulate([{ t: "SPY", w: 100 }], s2, endM, 10000, { rate: 4 }, 0);
+  const spy2 = simulate([{ t: "SPY", w: 100 }], s2, endM, 10000, 0, 0);
+  assert(Math.max(...spy2.twr.map((v, i) => Math.abs(v - pc.twr[i]))) < 1e-12,
+         "percent withdrawal leaves TWR unchanged");
+  let man = 10000;
+  for (const r of spy2.twr) man *= (1 + r) * (1 - 4 / 100 / 12);
+  assert(Math.abs(pc.balances.at(-1).v - man) < 1e-6, "percent-mode balance matches manual product");
+  assert(!pc.depleted, "percent mode never depletes");
+  // fixed withdrawal big enough to exhaust cash -> depletion, flat after
+  const dep = simulate([{ t: "CASHX", w: 100 }], s2, endM, 10000, { amount: -500 }, 0);
+  assert(dep.depleted !== null, "excessive withdrawal depletes");
+  const depIdx = dep.depleted - s2;
+  console.log("depletion month:", mKey(dep.depleted), "(month", depIdx + 1, "of the sim)");
+  assert(depIdx >= 19 && depIdx <= 23, "10k at ~cash rates less 500/mo lasts ~20-21 months");
+  assert(dep.balances.at(-1).v === 0, "depleted balance is exactly 0");
+  assert(dep.twr.slice(depIdx + 1).every(v => v === 0), "post-depletion twr is flat 0");
+  assert(isFinite(computeStats(dep, rfFrom(s2), null).cagr), "stats stay finite after depletion");
+  // step-up: reconstruct 36 months of stepped contributions manually
+  const st3 = simulate([{ t: "SPY", w: 100 }], s2, s2 + 35, 10000, { amount: 100, stepUp: 50 }, 0);
+  let mv = 10000, mAmt = 100;
+  for (let m = s2; m <= s2 + 35; m++) {
+    if (m % 12 === 0 && m > s2) mAmt *= 1.5;
+    mv = mv * (1 + ret("SPY", m)) + mAmt;
+  }
+  assert(Math.abs(st3.balances.at(-1).v - mv) < 1e-6, "step-up balance matches manual reconstruction");
+}
+
 // Data freshness + shape
 // freshness: the data must end at the previous complete month, or at most one
 // month behind it (a normal mid-month run before the next refresh)

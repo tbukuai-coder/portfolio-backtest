@@ -18,8 +18,11 @@ or on GitHub Pages.
   Sunway — converted to USD), a Singapore group (iShares MSCI Singapore plus
   DBS, OCBC, UOB, SingTel, Singapore Airlines, likewise USD-converted), and
   cash (3-month T-bill)
-- Start/end month, initial amount, **monthly contributions**, rebalancing
-  (monthly / quarterly / semi-annual / annual / none)
+- Start/end month, initial amount, **cashflows** — contribute or withdraw
+  $/month with an optional annual step-up (inflation-adjusted 4%-rule style),
+  or withdraw a fixed % of balance per year; unsustainable withdrawals show
+  the **depletion month** — and rebalancing (monthly / quarterly /
+  semi-annual / annual / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,
   max drawdown, longest underwater stretch, Sharpe, Sortino, Calmar, Ulcer index,
   Martin ratio — plus benchmark-relative stats when a benchmark is selected:
@@ -68,8 +71,14 @@ limits (8 calls/min, 800/day) are ample: one call per ticker.
 - Stats (CAGR, volatility, Sharpe, Sortino, drawdowns) are computed on
   **time-weighted** monthly returns, so contributions don't distort them;
   the final balance does include contributions.
-- Contributions are added at month-end at target weights; rebalancing happens on
-  calendar boundaries (December for annual, quarter-ends for quarterly).
+- Cashflows happen at month-end: contributions buy in at target weights;
+  withdrawals sell pro-rata from current holdings. Step-ups apply each January.
+  Percent-of-balance withdrawals take (rate ÷ 12) of the current balance
+  monthly and can never fully deplete. If a fixed withdrawal exhausts the
+  balance, the portfolio is **depleted**: the balance stays at $0, the summary
+  flags the depletion month, and stats past that date aren't meaningful.
+  Rebalancing happens on calendar boundaries (December for annual,
+  quarter-ends for quarterly).
 - Sharpe = mean monthly excess return over the 3-month T-bill ÷ its standard
   deviation, × √12. Sortino replaces the denominator with the downside deviation
   of the same excess returns.

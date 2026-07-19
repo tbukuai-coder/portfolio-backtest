@@ -203,7 +203,16 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
         <div class="pair"><select id="endMo"></select><select id="endYr"></select></div>
       </div>
       <div class="ctl"><label>Initial amount ($)</label><input type="number" id="initial" value="10000" min="1" step="1000"></div>
-      <div class="ctl"><label>Monthly contribution ($)</label><input type="number" id="contrib" value="0" step="100"></div>
+      <div class="ctl"><label>Cashflow</label>
+        <select id="cfMode">
+          <option value="">None</option>
+          <option value="add">Contribute $/month</option>
+          <option value="wd">Withdraw $/month</option>
+          <option value="wdpct">Withdraw % of balance per year</option>
+        </select>
+      </div>
+      <div class="ctl"><label id="cfAmtLabel">Amount ($/month)</label><input type="number" id="cfAmount" value="0" step="100" min="0"></div>
+      <div class="ctl"><label>Step-up (%/year)</label><input type="number" id="cfStep" value="0" step="0.5" min="0" title="Grow the monthly amount by this much every January — e.g. inflation-adjusted 4%-rule withdrawals"></div>
       <div class="ctl"><label>Rebalancing</label>
         <select id="rebal">
           <option value="12">Annually</option>
@@ -308,8 +317,9 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
 
   <footer>
     Methodology: monthly total returns from auto-adjusted closes (splits &amp; dividends reinvested).
-    Contributions are added at month-end at target weights; rebalancing happens on calendar boundaries
-    (Dec for annual, quarter-ends for quarterly). CAGR, volatility, drawdowns, Sharpe and Sortino are
+    Cashflows happen at month-end — contributions buy at target weights, withdrawals sell pro-rata
+    (step-ups each January; a fixed withdrawal that exhausts the balance marks the portfolio depleted);
+    rebalancing happens on calendar boundaries (Dec for annual, quarter-ends for quarterly). CAGR, volatility, drawdowns, Sharpe and Sortino are
     computed on time-weighted monthly returns, so contributions don't distort them. Sharpe = mean monthly
     excess return over 3-month T-bills ÷ its standard deviation, annualized ×√12; Sortino uses downside
     deviation of the same excess returns. Beta/alpha/R² are a CAPM regression of monthly excess returns on
@@ -340,23 +350,44 @@ function ret(t, m) {
   return (j >= 0 && j < s.r.length) ? s.r[j] : null;
 }
 
-// alloc: [{t, w}] with weights summing to 100
-function simulate(alloc, startM, endM, initial, contrib, rebalEvery) {
+// alloc: [{t, w}] with weights summing to 100.
+// cashflow: a number ($/mo at month-end, + contribute / - withdraw) or
+// {amount, stepUp, rate}: amount as above, stepUp %/yr applied each January,
+// rate = annual % of current balance withdrawn monthly (rate ignores the
+// other two). Returns are recorded BEFORE cashflows, so twr is cashflow-free.
+// Contributions buy in at target weights; withdrawals sell pro-rata from
+// current holdings (no negative sleeves). A fixed withdrawal that exhausts
+// the balance depletes the portfolio: balances stay 0, `depleted` records
+// the month, and later twr entries are 0 (flat) to keep series aligned.
+function simulate(alloc, startM, endM, initial, cashflow, rebalEvery) {
+  const cf = typeof cashflow === "object" && cashflow !== null
+    ? cashflow : { amount: cashflow || 0 };
+  let amt = cf.amount || 0;
   let vals = alloc.map(a => initial * a.w / 100);
   const twr = [], balances = [{ m: startM - 1, v: initial }];
+  let depleted = null;
   for (let m = startM; m <= endM; m++) {
+    if (cf.stepUp && m % 12 === 0 && m > startM) amt *= 1 + cf.stepUp / 100;
     const v0 = vals.reduce((s, x) => s + x, 0);
     for (let i = 0; i < alloc.length; i++) vals[i] *= 1 + ret(alloc[i].t, m);
     let v1 = vals.reduce((s, x) => s + x, 0);
-    twr.push(v1 / v0 - 1);
-    if (contrib) for (let i = 0; i < alloc.length; i++) vals[i] += contrib * alloc[i].w / 100;
+    twr.push(v0 > 0 ? v1 / v0 - 1 : 0);
+    if (cf.rate > 0) {
+      const f = 1 - cf.rate / 100 / 12;
+      for (let i = 0; i < alloc.length; i++) vals[i] *= f;
+    } else if (amt > 0) {
+      for (let i = 0; i < alloc.length; i++) vals[i] += amt * alloc[i].w / 100;
+    } else if (amt < 0 && v1 > 0) {
+      if (v1 + amt <= 0) { vals = alloc.map(() => 0); depleted ??= m; }
+      else { const f = 1 + amt / v1; for (let i = 0; i < alloc.length; i++) vals[i] *= f; }
+    }
     if (rebalEvery === 1 || (rebalEvery > 1 && (m % 12 + 1) % rebalEvery === 0)) {
       v1 = vals.reduce((s, x) => s + x, 0);
       for (let i = 0; i < alloc.length; i++) vals[i] = v1 * alloc[i].w / 100;
     }
     balances.push({ m, v: vals.reduce((s, x) => s + x, 0) });
   }
-  return { twr, balances, startM, endM };
+  return { twr, balances, startM, endM, depleted };
 }
 
 function computeStats(sim, rf, market) {
@@ -705,6 +736,13 @@ function readPortfolios() {
 // ----- run -----
 $("runBtn").onclick = run;
 $("logScale").onchange = () => LAST && drawGrowth(LAST);
+$("cfMode").onchange = () => {
+  const m = $("cfMode").value;
+  $("cfAmtLabel").textContent = m === "wdpct" ? "Rate (%/year)" : "Amount ($/month)";
+  $("cfAmount").step = m === "wdpct" ? "0.5" : "100";
+  $("cfStep").disabled = !m || m === "wdpct";   // %-of-balance self-adjusts; no step-up
+};
+$("cfMode").onchange();
 let LAST = null;
 
 function run() {
@@ -739,14 +777,24 @@ function run() {
   if (endM - startM < 11) { $("formWarn").textContent = "Need at least 12 months of overlapping data."; return; }
 
   const initial = Math.max(1, +$("initial").value || 10000);
-  const contrib = +$("contrib").value || 0;
+  const cfMode = $("cfMode").value;
+  const cfAmt = Math.abs(+$("cfAmount").value || 0);
+  const cfStep = Math.max(0, +$("cfStep").value || 0);
+  const cashflow =
+    cfMode === "add" && cfAmt ? { amount: cfAmt, stepUp: cfStep } :
+    cfMode === "wd" && cfAmt ? { amount: -cfAmt, stepUp: cfStep } :
+    cfMode === "wdpct" && cfAmt ? { rate: cfAmt } : { amount: 0 };
+  const cfNote =
+    cashflow.rate ? ` · ${cfAmt}%/yr withdrawal (of balance)` :
+    cashflow.amount > 0 ? ` · ${fmt$(cfAmt)}/mo contribution${cfStep ? ` (+${cfStep}%/yr)` : ""}` :
+    cashflow.amount < 0 ? ` · ${fmt$(cfAmt)}/mo withdrawal${cfStep ? ` (+${cfStep}%/yr)` : ""}` : "";
   const rebal = +$("rebal").value;
 
   const rf = [], market = [];
   for (let m = startM; m <= endM; m++) { rf.push(ret("CASHX", m)); market.push(ret("SPY", m)); }
 
   runs.forEach(r => {
-    r.sim = simulate(r.alloc, startM, endM, initial, contrib, rebal);
+    r.sim = simulate(r.alloc, startM, endM, initial, cashflow, rebal);
     r.stats = computeStats(r.sim, rf, market);
   });
 
@@ -758,10 +806,10 @@ function run() {
     runs.forEach(r => { r.stats.vs = computeBenchStats(r.sim.twr, benchRun.sim.twr, rf); });
   }
 
-  LAST = { runs, startM, endM, initial, contrib, benchT };
+  LAST = { runs, startM, endM, initial, benchT };
   $("periodNote").textContent =
     `${mLabel(startM)} – ${mLabel(endM)} · initial ${fmt$(initial)}` +
-    (contrib ? ` · ${fmt$(contrib)}/mo contribution` : "") +
+    cfNote +
     (clamped ? ` · start clamped to earliest data for ${clamped}` : "") +
     (endClamp ? ` · end clamped to last data for ${endClamp}` : "");
   renderSummary(LAST);
@@ -778,7 +826,8 @@ function run() {
 // ----- summary table -----
 function renderSummary({ runs, benchT }) {
   const rows = [
-    ["Final balance", r => fmt$(r.sim.balances.at(-1).v)],
+    ["Final balance", r => fmt$(r.sim.balances.at(-1).v) +
+      (r.sim.depleted ? ` <span class="neg">(depleted ${mLabel(r.sim.depleted)})</span>` : "")],
     ["CAGR", r => cls(fmtPct(r.stats.cagr, 2), r.stats.cagr)],
     ["Volatility (ann.)", r => fmtPct(r.stats.stdev, 2)],
     ["Best year", r => `${cls(fmtPct(r.stats.best.r), r.stats.best.r)} <span class="note">(${r.stats.best.y})</span>`],
@@ -874,8 +923,12 @@ function drawGrowth({ runs, startM, endM }) {
 
   const all = runs.flatMap(r => r.sim.balances.map(b => b.v));
   let lo = Math.min(...all), hi = Math.max(...all);
+  if (log) {  // a depleted portfolio holds 0 — clamp to the smallest positive value
+    const pos = all.filter(v => v > 0);
+    lo = pos.length ? Math.min(...pos) : 1;
+  }
   const Y = log
-    ? v => H - PAD.b - (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo) || 1) * (H - PAD.t - PAD.b)
+    ? v => H - PAD.b - (Math.log(Math.max(v, lo)) - Math.log(lo)) / (Math.log(hi) - Math.log(lo) || 1) * (H - PAD.t - PAD.b)
     : v => H - PAD.b - (v - Math.min(0, lo)) / (hi - Math.min(0, lo) || 1) * (H - PAD.t - PAD.b);
   const X = m => PAD.l + (m - (startM - 1)) / (endM - (startM - 1)) * (W - PAD.l - PAD.r);
 
