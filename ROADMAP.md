@@ -83,10 +83,13 @@ changes proven in Node before shipping.
       says so). Node anchors: fee 0 is a byte-identical no-op, net twr =
       (1+gross)(1−fee/12)−1 exactly every month, 1% fee ≈ 1.08pp CAGR
       drag on 60/40 since 2004.
-- [ ] **Asset correlation matrix** — scope to the assets in the current
-      backtest (portfolio constituents + benchmark, ≤ ~10) over the
-      clamped window, NOT all 58 embedded assets. Render as a table with
-      the heatmap's diverging `--hm-*` ramp (correlations are signed).
+- [x] **Asset correlation matrix** — built 2026-07-19: `corrMatrix()` in
+      the engine block, rendered as a card scoped to the assets in the
+      current backtest (constituents + benchmark) over the clamped
+      window, with the heatmap's diverging `--hm-*` ramp; hidden for
+      single-asset runs; ticker labels HTML-escaped (custom tickers are
+      user input). Node anchors: exact-1 diagonal, symmetry, SPY-VTI
+      > 0.98, SPY-TLT −0.08 since 2004, zero-variance leg → "—".
 - [ ] **Monte Carlo projection** — build AFTER withdrawals-aware framing:
       with cashflows it's a retirement planner ("N% of resampled histories
       survived 30 years"), without them just a fan chart. Use block

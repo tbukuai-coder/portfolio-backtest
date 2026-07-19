@@ -169,6 +169,21 @@ assert(maxDiff < 1e-12, "contributions don't move TWR (maxDiff=" + maxDiff + ")"
   assert(drag > 0.9 && drag < 1.15, "1% annual fee costs ~1pp of CAGR");
 }
 
+// Correlation matrix
+{
+  const s5 = mIdx("2004-01");
+  const M = corrMatrix(["SPY", "VTI", "TLT"], s5, endM);
+  assert(M[0][0] === 1 && M[1][1] === 1 && M[2][2] === 1, "diagonal is exactly 1");
+  assert(Math.abs(M[0][1] - M[1][0]) < 1e-12, "matrix is symmetric");
+  assert(M[0][1] > 0.98, "SPY-VTI correlation > 0.98");
+  console.log("SPY-TLT corr 2004+:", M[0][2].toFixed(3));
+  assert(M[0][2] < 0.2, "SPY-TLT correlation low/negative");
+  PV_DATA.series.__FLAT = { name: "t", group: "t", start: mKey(s5), r: Array(endM - s5 + 1).fill(0.01) };
+  const F = corrMatrix(["SPY", "__FLAT"], s5, endM);
+  assert(Number.isNaN(F[0][1]), "zero-variance leg yields NaN (rendered as em dash)");
+  delete PV_DATA.series.__FLAT;
+}
+
 // Data freshness + shape
 // freshness: the data must end at the previous complete month, or at most one
 // month behind it (a normal mid-month run before the next refresh)

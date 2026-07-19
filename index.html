@@ -315,6 +315,11 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 28px; line-height: 
       <div class="scrollx"><table id="hmTable" class="heatmap"></table></div>
     </div>
 
+    <div class="card" id="corrCard">
+      <h2>Asset correlations <span class="note">(monthly returns over the backtest window)</span></h2>
+      <div class="scrollx"><table id="corrTable" class="heatmap"></table></div>
+    </div>
+
     <div class="card">
       <h2>Annual returns table</h2>
       <div class="scrollx"><table id="annualTable"></table></div>
@@ -498,6 +503,27 @@ function rollingCAGR(twr, w) {
   for (const r of twr) pre.push(pre[pre.length - 1] + Math.log(1 + r));
   const out = [];
   for (let i = w; i <= twr.length; i++) out.push(Math.expm1((pre[i] - pre[i - w]) * 12 / w));
+  return out;
+}
+
+// pairwise Pearson correlations of the tickers' monthly returns over
+// [startM, endM]; NaN for a zero-variance leg
+function corrMatrix(tickers, startM, endM) {
+  const n = endM - startM + 1;
+  const series = tickers.map(t => {
+    const a = []; for (let m = startM; m <= endM; m++) a.push(ret(t, m)); return a;
+  });
+  const means = series.map(s => s.reduce((x, y) => x + y, 0) / n);
+  const out = tickers.map(() => []);
+  for (let i = 0; i < tickers.length; i++)
+    for (let j = 0; j < tickers.length; j++) {
+      let num = 0, di = 0, dj = 0;
+      for (let k = 0; k < n; k++) {
+        const a = series[i][k] - means[i], b = series[j][k] - means[j];
+        num += a * b; di += a * a; dj += b * b;
+      }
+      out[i][j] = (di > 1e-18 && dj > 1e-18) ? num / Math.sqrt(di * dj) : NaN;
+    }
   return out;
 }
 
@@ -850,6 +876,7 @@ function run() {
   drawDrawdowns(LAST);
   drawRolling(LAST);
   renderHeatmap(LAST);
+  renderCorr(LAST);
   renderAnnualTable(LAST);
   $("results").style.display = "block";
   $("results").scrollIntoView({ behavior: "smooth" });
@@ -1247,6 +1274,24 @@ function renderHeatmap({ runs, startM }) {
          `<td><span class="${t >= 0 ? "pos" : "neg"}">${fmtPct(t)}</span></td></tr>`;
   });
   $("hmTable").innerHTML = h + "</tbody>";
+}
+
+// ----- asset correlations -----
+function renderCorr({ runs, startM, endM }) {
+  const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const tickers = [...new Set(runs.flatMap(r => r.alloc.map(a => a.t)))];
+  const card = $("corrCard");
+  if (tickers.length < 2) { card.style.display = "none"; return; }
+  card.style.display = "";
+  const M = corrMatrix(tickers, startM, endM);
+  const cell = v => {
+    if (!isFinite(v)) return "<td>—</td>";
+    const pct = Math.round(Math.abs(v) * 100);
+    return `<td class="hm" style="background:color-mix(in oklab, var(${v >= 0 ? "--hm-pos" : "--hm-neg"}) ${pct}%, var(--hm-mid))">${v.toFixed(2)}</td>`;
+  };
+  let h = "<thead><tr><th></th>" + tickers.map(t => `<th>${esc(t)}</th>`).join("") + "</tr></thead><tbody>";
+  tickers.forEach((t, i) => { h += `<tr><td>${esc(t)}</td>` + M[i].map(cell).join("") + "</tr>"; });
+  $("corrTable").innerHTML = h + "</tbody>";
 }
 
 // ----- annual table -----
