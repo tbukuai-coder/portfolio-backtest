@@ -2,7 +2,7 @@
 
 A static HTML homage to [Portfolio Visualizer's Backtest Portfolio](https://www.portfoliovisualizer.com/backtest-portfolio).
 Zero dependencies, no build step, no server calls — monthly total-return data for a
-53-asset universe ships alongside the page in `data.js` (loaded via a plain
+58-asset universe ships alongside the page in `data.js` (loaded via a plain
 `<script src>`, not `fetch`), so the page still works offline, from `file://`,
 or on GitHub Pages.
 
@@ -11,11 +11,13 @@ or on GitHub Pages.
 - Up to **3 portfolios** side by side, plus a benchmark series
 - Curated universe: US equity ETFs (incl. factor styles — small-cap value AVUV,
   dividend SCHD, momentum MTUM, quality QUAL), global/international (VT, VXUS,
-  EFA, EEM, AVDV, Singapore EWS), bonds (US treasuries/credit plus EM bonds EMB
+  EFA, EEM, AVDV), bonds (US treasuries/credit plus EM bonds EMB
   and hedged international BNDX), gold/commodities/REITs/crypto,
   12 mega-cap stocks, a Malaysia group (iShares MSCI Malaysia plus seven Bursa
   blue chips — Maybank, Public Bank, CIMB, RHB Bank, Tenaga, IHH Healthcare,
-  Sunway — converted to USD), and cash (3-month T-bill)
+  Sunway — converted to USD), a Singapore group (iShares MSCI Singapore plus
+  DBS, OCBC, UOB, SingTel, Singapore Airlines, likewise USD-converted), and
+  cash (3-month T-bill)
 - Start/end month, initial amount, **monthly contributions**, rebalancing
   (monthly / quarterly / semi-annual / annual / none)
 - Performance summary: final balance, CAGR, annualized volatility, best/worst year,

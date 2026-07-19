@@ -40,7 +40,6 @@ UNIVERSE = {
     "EFA":     ("iShares MSCI EAFE (Dev Intl)", "International"),
     "EEM":     ("iShares MSCI Emerging Mkts", "International"),
     "AVDV":    ("Avantis Intl Small Cap Value", "International"),
-    "EWS":     ("iShares MSCI Singapore",     "International"),
     "AGG":     ("iShares Core US Total Bond", "Bonds"),
     "TLT":     ("iShares 20+ Yr Treasury",    "Bonds"),
     "IEF":     ("iShares 7-10 Yr Treasury",   "Bonds"),
@@ -76,6 +75,12 @@ UNIVERSE = {
     "RHBBANK": ("RHB Bank (USD)",             "Malaysia", "1066.KL", "MYRUSD=X"),
     "IHH":     ("IHH Healthcare (USD)",       "Malaysia", "5225.KL", "MYRUSD=X"),
     "SUNWAY":  ("Sunway (USD)",               "Malaysia", "5211.KL", "MYRUSD=X"),
+    "EWS":     ("iShares MSCI Singapore",     "Singapore"),
+    "DBS":     ("DBS Group (USD)",            "Singapore", "D05.SI", "SGDUSD=X"),
+    "OCBC":    ("OCBC Bank (USD)",            "Singapore", "O39.SI", "SGDUSD=X"),
+    "UOB":     ("UOB (USD)",                  "Singapore", "U11.SI", "SGDUSD=X"),
+    "SINGTEL": ("SingTel (USD)",              "Singapore", "Z74.SI", "SGDUSD=X"),
+    "SIA":     ("Singapore Airlines (USD)",   "Singapore", "C6L.SI", "SGDUSD=X"),
 }
 
 

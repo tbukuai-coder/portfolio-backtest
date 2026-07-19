@@ -132,6 +132,23 @@ assert(PV_DATA.series.AVDV?.group === "International" && PV_DATA.series.AVDV.sta
   console.log("MAYBANK USD CAGR", (mb.cagr * 100).toFixed(2), "maxDD", (mb.maxDD * 100).toFixed(1));
   assert(mb.cagr > 0 && mb.cagr < 0.15, "MAYBANK USD CAGR plausible");
 }
+
+// Singapore group: USD-converted SGX listings + EWS
+{
+  const sg = ["EWS", "DBS", "OCBC", "UOB", "SINGTEL", "SIA"];
+  sg.forEach(t => assert(PV_DATA.series[t]?.group === "Singapore", t + " in Singapore group"));
+  assert(PV_DATA.series.DBS.start === "2004-01", "DBS starts 2004-01 (FX history limit)");
+  assert(PV_DATA.series.EWS.start === "1996-04", "EWS reaches back to 1996");
+  sg.filter(t => t !== "EWS").forEach(t => {
+    const r = PV_DATA.series[t].r;
+    assert(Math.min(...r) > -0.45 && Math.max(...r) < 0.45,
+           t + " returns free of garbage prints");
+  });
+  const dbs = computeStats(simulate([{ t: "DBS", w: 100 }], mIdx("2004-01"), endM, 10000, 0, 0),
+                           rfFrom(mIdx("2004-01")), null);
+  console.log("DBS USD CAGR", (dbs.cagr * 100).toFixed(2), "maxDD", (dbs.maxDD * 100).toFixed(1));
+  assert(dbs.cagr > 0.03 && dbs.cagr < 0.20, "DBS USD CAGR plausible");
+}
 for (const [t, s] of Object.entries(PV_DATA.series)) {
   const expected = endM - mIdx(s.start) + 1;
   assert(s.r.length === expected, t + " contiguous to end (" + s.r.length + "/" + expected + ")");
